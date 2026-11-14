@@ -399,7 +399,7 @@ function readerChatSend() {
   readerChatRender();
 }
 document.getElementById('readerChatInput').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); readerChatSend(); }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); readerChatSend(); }
 });
 document.getElementById('readerChatInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 72) + 'px'; });
 document.getElementById('readerChatAsk').addEventListener('click', function() {

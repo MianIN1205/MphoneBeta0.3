@@ -109,7 +109,9 @@ function hubSnapshot(state, chars, url) {
       if (m.source && m.source !== 'hub') meta.source = m.source;
       if (m.emo) { meta.emo = m.emo; meta.emoW = m.emoW || 2; }   // 情绪和线索放 meta 里，别的小手机、MCP 也拿得到
       if (m.cues && m.cues.length) meta.cues = m.cues;
-      if (m.tl) { meta.timeline = true; meta.when = m.when || m.time; }   // 关于用户的时间线
+      if (m.tl) meta.timeline = true;
+      if (m.when || m.tl) meta.when = m.when || null;
+      if (m.whenPrecision) meta.whenPrecision = m.whenPrecision;   // 关于用户的时间线
       put({ id: m.id, char: key, kind: m.hubKind || 'memory', content: m.text, meta: meta, created_at: m.time, charId: c.id });
     });
     (c.selfFacts || []).forEach(function(f) {
@@ -124,6 +126,15 @@ function hubSnapshot(state, chars, url) {
 }
 function hubRec(it, h) { var r = { h: h, c: it.charId }; if (it.kind === 'core') r.k = 'core'; return r; }
 function hubItemHash(it) { return hubHash(it.kind + '|' + it.char + '|' + it.content + '|' + JSON.stringify(it.meta || {})); }
+
+function hubApplyMemoryDate(memory, meta) {
+  if (meta.timeline) memory.tl = 1; else delete memory.tl;
+  if (Number(meta.when) > 0) memory.when = Number(meta.when);
+  else if (memory.tl && !Object.prototype.hasOwnProperty.call(meta, 'when')) memory.when = memory.time;
+  else delete memory.when;
+  if (memory.when && ['day', 'month', 'year', 'before'].indexOf(meta.whenPrecision) >= 0) memory.whenPrecision = meta.whenPrecision;
+  else delete memory.whenPrecision;
+}
 
 // 把记忆库里拉下来的一条放进手机里（新的、改过的、删掉的）
 function hubApplyRow(row, state, chars) {
@@ -167,7 +178,7 @@ function hubApplyRow(row, state, chars) {
     cur.type = type; delete cur.expires;
     if (row.kind !== 'memory') cur.hubKind = row.kind; else delete cur.hubKind;
     if (typeof memSetTags === 'function') memSetTags(cur, { emo: meta.emo, emoW: meta.emoW, cues: meta.cues });
-    if (meta.timeline) { cur.tl = 1; cur.when = +meta.when || cur.time; } else { delete cur.tl; delete cur.when; }
+    hubApplyMemoryDate(cur, meta);
   } else {
     var m = { id: row.id, type: type, text: String(row.content).slice(0, typeof memTextMax === 'function' ? memTextMax(type) : 300), time: row.created_at || row.updated_at, source: meta.source || 'hub', hubSrc: state._url };
     if (meta.scene) m.scene = meta.scene;
@@ -175,7 +186,7 @@ function hubApplyRow(row, state, chars) {
     else if (!meta.source && row.source && row.source !== '眠花糖机') m.from = String(row.source).slice(0, 20);
     if (row.kind !== 'memory') m.hubKind = row.kind;
     if (typeof memSetTags === 'function') memSetTags(m, { emo: meta.emo, emoW: meta.emoW, cues: meta.cues });
-    if (meta.timeline) { m.tl = 1; m.when = +meta.when || m.time; }
+    hubApplyMemoryDate(m, meta);
     list.push(m);
   }
   return 'mem';

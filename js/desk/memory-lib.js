@@ -5,9 +5,9 @@
 // =============================================
 var memLibChar = '', memLibFilter = 'precious', memLibEmo = '';   // memLibEmo：按情绪筛（空 = 全部）
 function memCharById(id) { return charList.filter(function(c) { return c.id === id; })[0] || null; }
-function memCounts(id) {
+function memCounts(id, list) {
   var n = { precious: 0, long: 0, short: 0, tl: 0 };
-  memList(id).forEach(function(m) { var t = m.tl ? 'tl' : m.type; n[t] = (n[t] || 0) + 1; });
+  (list || memList(id)).forEach(function(m) { var t = m.tl ? 'tl' : m.type; n[t] = (n[t] || 0) + 1; });
   return n;
 }
 function memCharName(c) { return (c && (c.charAlias || c.charName)) || '未命名'; }
@@ -40,7 +40,14 @@ function renderMemHome() {
     grid.appendChild(card);
   });
 }
+var memSearch = document.getElementById('memSearch');
+var memSearchClear = document.getElementById('memSearchClear');
+var memSearchStatus = document.getElementById('memSearchStatus');
+function memSearchTokens(value) {
+  return String(value || '').normalize('NFKC').toLowerCase().trim().split(/\s+/).filter(Boolean);
+}
 function openMemDetail(id) {
+  if (memLibChar !== id) { memSearch.value = ''; memLibEmo = ''; }
   memLibChar = id;
   document.getElementById('memHome').style.display = 'none';
   document.getElementById('memDetail').style.display = '';
@@ -55,7 +62,8 @@ function renderMemLib() {
   if (!char) { showMemHome(); return; }
   renderMemMilestone(char);
   document.querySelectorAll('#memFilterRow .pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b.dataset.f === memLibFilter); });
-  var n = memCounts(char.id), cfg = memCfgOf(char);
+  var memories = memList(char.id);
+  var n = memCounts(char.id, memories), cfg = memCfgOf(char);
   var stats = document.getElementById('memStats'), untagged = memUntagged(char);
   var fading = (memFading[char.id] || []).length;
   stats.textContent = '珍贵 ' + n.precious + ' · 长期 ' + n.long + ' · 短期 ' + n.short + ' · 时间线 ' + n.tl +
@@ -68,11 +76,33 @@ function renderMemLib() {
     fill.addEventListener('click', function() { memFillTags(char, fill); });
     stats.appendChild(fill);
   }
-  var box = document.getElementById('memList');
-  box.innerHTML = '';
-  var all = memList(char.id).filter(function(m) { return memLibFilter === 'tl' ? m.tl : (m.type === memLibFilter && !m.tl); });
+  renderMemResults(char, memories);
+}
+function renderMemResults(char, memories) {
+  var box = document.getElementById('memList'), terms = memSearchTokens(memSearch.value);
+  var searching = terms.length > 0;
+  box.textContent = '';
+  memSearchClear.hidden = !searching;
+  document.getElementById('memOverview').hidden = searching;
+  var emoRow = document.getElementById('memEmoFilter');
+  emoRow.hidden = searching;
+  memSearchStatus.textContent = '';
+  if (searching) {
+    var hits = memories.map(function(m) {
+      var body = String(m.text || '').normalize('NFKC').toLowerCase();
+      var cues = (m.cues || []).join(' ').normalize('NFKC').toLowerCase();
+      if (!terms.every(function(t) { return body.includes(t) || cues.includes(t); })) return null;
+      return { memory: m, score: terms.filter(function(t) { return body.includes(t); }).length };
+    }).filter(Boolean).sort(function(a, b) {
+      return b.score - a.score || (b.memory.when || b.memory.time) - (a.memory.when || a.memory.time);
+    });
+    memSearchStatus.textContent = hits.length ? '找到 ' + hits.length + ' 条记忆' : '没找到匹配的记忆';
+    hits.forEach(function(hit) { box.appendChild(renderMemCard(char, hit.memory)); });
+    return;
+  }
+  var all = memories.filter(function(m) { return memLibFilter === 'tl' ? m.tl : (m.type === memLibFilter && !m.tl); });
   // 按情绪筛：只列这一类里出现过的情绪
-  var emoRow = document.getElementById('memEmoFilter'), emos = MEM_EMOS.filter(function(e) { return all.some(function(m) { return m.emo === e; }); });
+  var emos = MEM_EMOS.filter(function(e) { return all.some(function(m) { return m.emo === e; }); });
   if (emos.indexOf(memLibEmo) < 0) memLibEmo = '';
   emoRow.innerHTML = '';
   emos.forEach(function(e) {
@@ -82,65 +112,113 @@ function renderMemLib() {
     c.addEventListener('click', function() { memLibEmo = memLibEmo === e ? '' : e; renderMemLib(); });
     emoRow.appendChild(c);
   });
-  var list = all.filter(function(m) { return !memLibEmo || m.emo === memLibEmo; }).sort(function(a, b) { return memLibFilter === 'tl' ? (b.when || b.time) - (a.when || a.time) : b.time - a.time; });
+  var list = all.filter(function(m) { return !memLibEmo || m.emo === memLibEmo; }).sort(function(a, b) {
+    return memLibFilter === 'tl' ? (b.when || 0) - (a.when || 0) || b.time - a.time : b.time - a.time;
+  });
   if (!list.length) {
     box.innerHTML = memLibFilter === 'tl' ? '<div class="auto-hint desk-empty">还没有时间线。你的生活有了长久的变化（搬家、换工作、没了电脑…）时 TA 会记一笔，每次聊天都记着；你也可以点右上角「添加」。</div>' :
       '<div class="auto-hint desk-empty">还没有' + MEM_TYPE_NAME[memLibFilter] + '记忆。聊天时 TA 会自己记下，你也可以点右上角「添加」。</div>';
     return;
   }
-  list.forEach(function(m) {
-    var card = document.createElement('div');
-    card.className = 'mem-card type-' + m.type;
-    var head = document.createElement('div');
-    head.className = 'mem-card-head';
-    var badge = document.createElement('span');
-    badge.className = 'mem-badge ' + (m.tl ? 'tl' : m.type);
-    badge.textContent = m.tl ? '🕰 ' + memWhenText(m.when || m.time) : (m.type === 'precious' ? '💎 ' : '') + MEM_TYPE_NAME[m.type];
-    var meta = document.createElement('span');
-    meta.className = 'mem-meta';
-    meta.textContent = m.tl ? memSourceText(m) + ' · ' + memAgo(m.when || m.time) : memSourceText(m) + (m.scene === 'drama' ? ' · 剧情空间' : '') + ' · ' + (m.source === 'import' ? memDateText(m.time).split(' ')[0] : memAgo(m.time)) +
-      (m.type === 'short' && m.expires ? ' · ' + Math.max(1, Math.ceil((m.expires - Date.now()) / MEM_DAY)) + ' 天后忘掉' : '');
-    head.appendChild(badge);
-    head.appendChild(meta);
-    var text = document.createElement('div');
-    text.className = 'mem-text';
-    text.textContent = m.text;
-    // 当时的心情和画面：一行小字（情绪后面的小点是强度）
-    var tags = document.createElement('div');
-    tags.className = 'mem-tags';
-    if (m.emo) { var em = document.createElement('span'); em.className = 'mem-tag-emo'; em.textContent = m.emo + ' ' + '•••'.slice(0, m.emoW || 2); tags.appendChild(em); }
-    (m.cues || []).forEach(function(c) { var t = document.createElement('span'); t.className = 'mem-tag-cue'; t.textContent = c; tags.appendChild(t); });
-    var acts = document.createElement('div');
-    acts.className = 'anniv-acts';
-    function btn(label, on, fn) {
-      var b = document.createElement('button');
-      b.className = 'anniv-flag' + (on ? ' on' : '');
-      b.textContent = label;
-      b.addEventListener('click', fn);
-      acts.appendChild(b);
-      return b;
-    }
-    if (!m.tl) btn(m.type === 'precious' ? '💎 取消珍贵' : '💎 设为珍贵', m.type === 'precious', function() {
-      m.type = m.type === 'precious' ? 'long' : 'precious';
-      delete m.expires;
-      saveMemStore();
-      renderMemLib();
-    });
-    btn('编辑', false, function() { openMemEdit(char, m); });
-    btn('删除', false, function() {
-      openConfirm('删除这条记忆？', function() {
-        memStore[char.id] = memList(char.id).filter(function(x) { return x !== m; });
-        saveMemStore();
-        renderMemLib();
-      });
-    }).classList.add('anniv-del');
-    card.appendChild(head);
-    card.appendChild(text);
-    if (tags.childNodes.length) card.appendChild(tags);
-    card.appendChild(acts);
-    box.appendChild(card);
+  if (memLibFilter === 'tl') { renderMemTimeline(box, char, list); return; }
+  list.forEach(function(m) { box.appendChild(renderMemCard(char, m)); });
+}
+function confirmMemDelete(char, memory, after) {
+  openConfirm('删除这条记忆？', function() {
+    memStore[char.id] = memList(char.id).filter(function(m) { return m !== memory; });
+    saveMemStore();
+    if (after) after();
+    if (memLibChar === char.id) renderMemLib();
   });
 }
+function renderMemTimeline(box, char, memories) {
+  var timeline = document.createElement('ol'), lastYear = null;
+  timeline.className = 'mem-timeline';
+  memories.forEach(function(m) {
+    var d = new Date(m.when || m.time), year = d.getFullYear();
+    var row = document.createElement('li');
+    var date = document.createElement('span');
+    date.className = 'mem-timeline-date';
+    var precision = m.whenPrecision || 'day';
+    date.textContent = !m.when ? '时间未填' : precision === 'before' ? year + '以前' : precision === 'year' ? year + '年'
+      : precision === 'month' ? (d.getMonth() + 1) + '月' : (d.getMonth() + 1) + '.' + d.getDate();
+    if (m.when && year !== lastYear && precision !== 'before' && precision !== 'year') {
+      var label = document.createElement('small');
+      label.textContent = year;
+      date.appendChild(label);
+    }
+    if (m.when) lastYear = year;
+    var edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'mem-timeline-event';
+    edit.textContent = m.text;
+    edit.setAttribute('aria-label', '编辑时间线：' + m.text);
+    edit.addEventListener('click', function() { openMemEdit(char, m); });
+    row.appendChild(date);
+    row.appendChild(edit);
+    timeline.appendChild(row);
+  });
+  box.appendChild(timeline);
+}
+function renderMemCard(char, m) {
+  var card = document.createElement('div');
+  card.className = 'mem-card type-' + m.type;
+  var head = document.createElement('div');
+  head.className = 'mem-card-head';
+  var badge = document.createElement('span');
+  badge.className = 'mem-badge ' + (m.tl ? 'tl' : m.type);
+  badge.textContent = m.tl ? '📍 时间线' : (m.type === 'precious' ? '💎 ' : '') + MEM_TYPE_NAME[m.type];
+  var meta = document.createElement('span');
+  meta.className = 'mem-meta';
+  meta.textContent = memSourceText(m) + (m.scene === 'drama' ? ' · 剧情空间' : '') +
+    ' · ' + (m.when ? memWhenText(m.when, m.whenPrecision) : m.source === 'import' ? memDateText(m.time).split(' ')[0] : memAgo(m.time)) +
+    (m.type === 'short' && m.expires ? ' · ' + Math.max(1, Math.ceil((m.expires - Date.now()) / MEM_DAY)) + ' 天后整理' : '');
+  head.appendChild(badge);
+  head.appendChild(meta);
+  var text = document.createElement('div');
+  text.className = 'mem-text';
+  text.textContent = m.text;
+  // 当时的心情和画面：一行小字（情绪后面的小点是强度）
+  var tags = document.createElement('div');
+  tags.className = 'mem-tags';
+  if (m.emo) { var em = document.createElement('span'); em.className = 'mem-tag-emo'; em.textContent = m.emo + ' ' + '•••'.slice(0, m.emoW || 2); tags.appendChild(em); }
+  (m.cues || []).forEach(function(c) { var t = document.createElement('span'); t.className = 'mem-tag-cue'; t.textContent = c; tags.appendChild(t); });
+  var acts = document.createElement('div');
+  acts.className = 'anniv-acts';
+  function btn(label, on, fn) {
+    var b = document.createElement('button');
+    b.className = 'anniv-flag' + (on ? ' on' : '');
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    acts.appendChild(b);
+    return b;
+  }
+  if (!m.tl) btn(m.type === 'precious' ? '💎 取消珍贵' : '💎 设为珍贵', m.type === 'precious', function() {
+    m.type = m.type === 'precious' ? 'long' : 'precious';
+    delete m.expires;
+    saveMemStore();
+    renderMemLib();
+  });
+  btn('编辑', false, function() { openMemEdit(char, m); });
+  btn('删除', false, function() { confirmMemDelete(char, m); }).classList.add('anniv-del');
+  card.appendChild(head);
+  card.appendChild(text);
+  if (tags.childNodes.length) card.appendChild(tags);
+  card.appendChild(acts);
+  return card;
+}
+document.getElementById('memSearchForm').addEventListener('submit', function(e) { e.preventDefault(); });
+var memSearchFrame = 0;
+function refreshMemSearch() {
+  if (memSearchFrame) cancelAnimationFrame(memSearchFrame);
+  memSearchFrame = requestAnimationFrame(function() {
+    memSearchFrame = 0;
+    var char = memCharById(memLibChar);
+    if (char) renderMemResults(char, memList(char.id));
+  });
+}
+memSearch.addEventListener('input', refreshMemSearch);
+memSearchClear.addEventListener('click', function() { memSearch.value = ''; refreshMemSearch(); memSearch.focus(); });
 document.querySelectorAll('#memFilterRow .pf-radio-btn').forEach(function(b) {
   b.addEventListener('click', function() { memLibFilter = this.dataset.f; renderMemLib(); });
 });
@@ -309,7 +387,7 @@ function memDocxCharParas(char) {
     paras.push({ text: (type === 'precious' ? '💎 珍贵的记忆' : MEM_TYPE_NAME[type] + '记忆') + '（' + list.length + ' 条）', size: 28, bold: true, color: '5A4249', after: 120 });
     if (!list.length) paras.push({ text: '（还没有）', size: 20, color: 'AAAAAA', after: 200 });
     list.forEach(function(m) {
-      paras.push({ text: memDateText(m.time) + '　·　' + memSourceText(m) +
+      paras.push({ text: (m.when ? memWhenText(m.when, m.whenPrecision) : memDateText(m.time)) + '　·　' + memSourceText(m) +
         (m.type === 'short' && m.expires ? '　·　' + memDateText(m.expires) + ' 忘掉' : ''), size: 18, color: '998888', after: 20 });
       paras.push({ text: m.text, size: 22, after: 160 });
     });
@@ -340,9 +418,27 @@ var memEditing = null, memEditType = 'long';
 function setMemEditType(t) {
   memEditType = t;
   document.querySelectorAll('#memEditType .pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b.dataset.type === t); });
-  document.getElementById('memEditWhenRow').classList.toggle('on', t === 'tl');   // 时间线：多一个「大概哪天」
 }
-function memDateInput(t) { var d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+var memEditPrecision = document.getElementById('memEditWhenPrecision');
+var memEditWhen = document.getElementById('memEditWhen');
+function memFormatDateInput(time, precision) {
+  var d = new Date(time);
+  var parts = [d.getFullYear(), pad(d.getMonth() + 1), pad(d.getDate())];
+  return parts.slice(0, precision === 'day' ? 3 : precision === 'month' ? 2 : 1).join('-');
+}
+function syncMemDateInput(value) {
+  var precision = memEditPrecision.value;
+  memEditWhen.hidden = precision === 'none';
+  memEditWhen.type = precision === 'day' ? 'date' : 'text';
+  memEditWhen.inputMode = precision === 'day' ? '' : 'text';
+  memEditWhen.placeholder = precision === 'month' ? '例如 2024-05' : '例如 2024';
+  if (precision === 'day') memEditWhen.max = memFormatDateInput(Date.now(), 'day');
+  memEditWhen.value = value || '';
+}
+memEditPrecision.addEventListener('change', function() {
+  var old = memParseDate(memEditWhen.value);
+  syncMemDateInput(old ? memFormatDateInput(old.time, this.value) : '');
+});
 var memEditEmo = '';
 function paintMemEditEmo() {
   var row = document.getElementById('memEditEmo');
@@ -362,7 +458,10 @@ function openMemEdit(char, m) {
   memEditEmo = (m && m.emo) || '';
   paintMemEditEmo();
   document.getElementById('memEditCues').value = ((m && m.cues) || []).join('、');
-  document.getElementById('memEditWhen').value = memDateInput((m && (m.when || m.time)) || Date.now());
+  var known = m && m.when;
+  memEditPrecision.value = known ? m.whenPrecision || 'day' : 'none';
+  syncMemDateInput(known ? memFormatDateInput(known, memEditPrecision.value) : '');
+  document.getElementById('memEditDelete').hidden = !m;
   setMemEditType(m ? (m.tl ? 'tl' : m.type) : memLibFilter);
   memEditOverlay.classList.add('open');
 }
@@ -375,14 +474,23 @@ document.getElementById('memAddBtn').addEventListener('click', function() {
 });
 document.getElementById('memEditCancel').addEventListener('click', function() { memEditOverlay.classList.remove('open'); });
 closeOnBackdrop(memEditOverlay);
+document.getElementById('memEditDelete').addEventListener('click', function() {
+  var e = memEditing;
+  if (!e || !e.m) return;
+  memEditOverlay.classList.remove('open');
+  confirmMemDelete(e.char, e.m);
+});
 document.getElementById('memEditSave').addEventListener('click', function() {
   var ta = document.getElementById('memEditText'), text = ta.value.trim();
   if (!text) { shakeEl(ta); return; }
-  var e = memEditing;
+  var e = memEditing, precision = memEditPrecision.value;
+  var date = precision === 'none' ? null : memParseDate(memEditWhen.value, precision);
+  if (precision !== 'none' && !date) { shakeEl(memEditWhen); showToast('请检查发生时间', 'error'); return; }
   if (e.m) {
     if (e.m.text !== text) { e.m.text = text.slice(0, typeof memTextMax === 'function' ? memTextMax(memEditType === 'short' ? 'short' : 'long') : 300); delete e.m.emb; delete e.m.embModel; }
-    var when = document.getElementById('memEditWhen').value;
-    if (memEditType === 'tl') { e.m.tl = 1; e.m.when = memParseWhen(when, e.m.when || e.m.time); } else { delete e.m.tl; delete e.m.when; }
+    if (memEditType === 'tl') e.m.tl = 1; else delete e.m.tl;
+    if (date) { e.m.when = date.time; e.m.whenPrecision = date.precision; }
+    else { delete e.m.when; delete e.m.whenPrecision; }
     e.m.type = memEditType === 'tl' ? 'long' : memEditType;
     if (e.m.type === 'short') { if (!e.m.expires) e.m.expires = Date.now() + memCfgOf(e.char).shortDays * MEM_DAY; }
     else delete e.m.expires;
@@ -392,7 +500,7 @@ document.getElementById('memEditSave').addEventListener('click', function() {
     saveMemStore();
   } else {
     memAdd(e.char, { type: memEditType === 'tl' ? 'long' : memEditType, text: text, source: 'user', emo: memEditEmo, cues: document.getElementById('memEditCues').value,
-      tl: memEditType === 'tl', when: document.getElementById('memEditWhen').value });
+      tl: memEditType === 'tl', when: date ? memEditWhen.value : '', whenPrecision: precision });
   }
   memEditOverlay.classList.remove('open');
   renderMemLib();

@@ -348,9 +348,10 @@
 .cr-plus-pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
 .cr-plus-pages::-webkit-scrollbar { display: none; }
 .cr-plus-pages > .cr-plus-grid { flex: 0 0 100%; scroll-snap-align: start; }
-.cr-plus-dots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
-.cr-plus-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(200,150,150,0.3); }
-.cr-plus-dots i.on { background: rgba(208,96,110,0.7); }
+.cr-plus-dots { position: absolute; left: 0; right: 0; bottom: 1px; display: flex; justify-content: center; gap: 3px; pointer-events: none; }
+.cr-plus-dots button { display: grid; place-items: center; width: 24px; height: 20px; border: 0; padding: 0; background: transparent; cursor: pointer; pointer-events: auto; }
+.cr-plus-dots button::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: rgba(200,150,150,0.36); }
+.cr-plus-dots button[aria-current="true"]::after { width: 11px; border-radius: 5px; background: rgba(208,96,110,0.8); }
 .cr-plus-panel:not(.open) .cr-plus-dots { display: none; }
 
 /* MianIN 没有剧情窗口（用户要的）：聊天室不显示聊天 / 剧情切换，角色设置里美化、世界书也不分两栏 */

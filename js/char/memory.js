@@ -45,20 +45,37 @@ function memSetTags(m, data) {
   if (e) { m.emo = e; m.emoW = Math.max(1, Math.min(3, parseInt(data.emoW, 10) || 2)); }
   var c = memNormCues(data.cues);
   if (c.length) m.cues = memNormCues((m.cues || []).concat(c));
-  if (data.tl) { m.tl = 1; m.when = memParseWhen(data.when, m.when || m.time); if (m.type === 'short') { m.type = 'long'; delete m.expires; } }
+  if (data.tl) {
+    m.tl = 1;
+    if (m.type === 'short') { m.type = 'long'; delete m.expires; }
+  }
+  if (data.when) {
+    var date = memParseDate(data.when, data.whenPrecision);
+    if (date) { m.when = date.time; m.whenPrecision = date.precision; }
+  }
 }
 // ---------- 关于用户的时间线（2026-11-11 用户要的）：会长期影响用户生活的变化和重要节点（搬家、换工作、没了电脑…）----------
 // 存成带 tl 的长期记忆（m.when = 大概哪天发生的），每次聊天都按时间整条带着，后面的变化取代前面的说法；小细节照旧记短期
 var MEM_TL_MAX = 30;
-function memParseWhen(s, def) {
-  var x = String(s || '').match(/(\d{4})\s*[-/.年]\s*(\d{1,2})(?:\s*[-/.月]\s*(\d{1,2}))?/);
-  if (x) {
-    var d = new Date(+x[1], +x[2] - 1, +(x[3] || 1), 12).getTime();
-    if (!isNaN(d) && d < Date.now() + MEM_DAY) return d;
-  }
-  return def || Date.now();
+function memParseDate(value, precision) {
+  var text = String(value || '').trim().replace(/年以前$/, '以前').replace(/年$/, '');
+  var parts = text.match(/^(\d{4})(?:[-/.年](\d{1,2})(?:[-/.月](\d{1,2}))?月?)?(?:日)?(以前)?$/);
+  if (!parts) return null;
+  var actual = parts[4] ? 'before' : parts[3] ? 'day' : parts[2] ? 'month' : 'year';
+  if (precision === 'before' && actual === 'year') actual = 'before';
+  if (precision && precision !== actual) return null;
+  var year = Number(parts[1]), month = Number(parts[2] || 1), day = Number(parts[3] || 1);
+  var date = new Date(year, month - 1, day, 12);
+  if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day || date.getTime() > Date.now() + MEM_DAY) return null;
+  return { time: date.getTime(), precision: actual };
 }
-function memWhenText(t) { var d = new Date(t); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'; }
+function memWhenText(t, precision) {
+  var d = new Date(t), year = d.getFullYear() + '年';
+  if (precision === 'before') return year + '以前';
+  if (precision === 'year') return year;
+  var month = year + (d.getMonth() + 1) + '月';
+  return precision === 'month' ? month : month + d.getDate() + '日';
+}
 function memTimeline(id) { return memList(id).filter(function(m) { return m.tl; }).sort(function(a, b) { return (a.when || a.time) - (b.when || b.time); }); }
 // 给 TA 看的一条：〔线索〕正文（情绪，多久前…）——像回想起当时的画面，不是背资料
 function memLine(m, extra) {
@@ -95,14 +112,16 @@ function memEmbCos(a, b) {
 // 一个角色当前的记忆（顺手清掉到期的短期记忆）
 // 到期的短期记忆不直接忘（2026-11-11 用户要的）：先放进 memFading，攒着合成一条「这几天的小事」长期记忆（memDigest）
 var memFading = mphoneStore.load('mphone_mem_fading', {});   // 角色id → [{ text, time, expired, scene }]
-var MEM_FADING_MAX = 80;
+// 每次最多整理 80 条。没配置 API 或请求失败时原文留在队列里。
+var MEM_DIGEST_BATCH = 80;
 function memList(charId) {
   var list = memStore[charId] || [], now = Date.now();
   var gone = list.filter(function(m) { return m.type === 'short' && m.expires && m.expires < now; });
   if (gone.length) {
     memStore[charId] = list.filter(function(m) { return gone.indexOf(m) < 0; });
-    var q = memFading[charId] = (memFading[charId] || []).concat(gone.map(function(m) { return { text: m.text, time: m.time, expired: m.expires, scene: m.scene }; }));
-    if (q.length > MEM_FADING_MAX) q.splice(0, q.length - MEM_FADING_MAX);
+    memFading[charId] = (memFading[charId] || []).concat(gone.map(function(m) {
+      return { text: m.text, time: m.time, expired: m.expires, scene: m.scene };
+    }));
     mphoneStore.save('mphone_mem_fading', memFading);
     saveMemStore();
     return memStore[charId];
@@ -116,14 +135,22 @@ function memAdd(char, data) {
   var text = String((data && data.text) || '').trim().slice(0, memTextMax(type));
   if (!char || !text) return null;
   var cfg = memCfgOf(char);
-  var tv = memTokens(text);
-  var dup = memList(char.id).filter(function(m) { return memCos(tv, memTokens(m.text)) > (data.dupAt || 0.85); })[0];
+  var tv;
+  var date = data.when ? memParseDate(data.when, data.whenPrecision) : null;
+  var dup = memList(char.id).find(function(m) {
+    if (Boolean(m.tl) !== Boolean(data.tl)) return false;
+    if (date && m.when && (date.time !== m.when || date.precision !== (m.whenPrecision || 'day'))) return false;
+    if (m.text === text) return true;
+    if (data.exactOnly) return false;
+    if (!tv) tv = memTokens(text);
+    return memCos(tv, memTokens(m.text)) > (data.dupAt || 0.85);
+  });
   if (dup) {
-    if (!data.time) dup.time = Date.now();
+    if (!data.time && !data.preserveDuplicateTime) dup.time = Date.now();
     if (MEM_TYPE_RANK[type] > MEM_TYPE_RANK[dup.type]) { dup.type = type; delete dup.expires; }
     if (dup.type === 'short') dup.expires = Date.now() + cfg.shortDays * MEM_DAY;
     memSetTags(dup, data);
-    saveMemStore();
+    if (!data.deferSave) saveMemStore();
     return dup;
   }
   var m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), type: type, text: text, time: data.time || Date.now(), source: data.source || 'chat' };
@@ -132,7 +159,7 @@ function memAdd(char, data) {
   memSetTags(m, data);
   if (type === 'short') m.expires = Date.now() + cfg.shortDays * MEM_DAY;
   (memStore[char.id] = memStore[char.id] || []).push(m);
-  saveMemStore();
+  if (!data.deferSave) saveMemStore();
   if (type !== 'short' && !data.noMilestone) setTimeout(function() { memMaybeMilestone(char); }, 0);
   return m;
 }
@@ -245,13 +272,14 @@ function memMaybeKnow(char, byDiary) {
 var memDigestBusy = {};
 function memDigestDate(t) { var d = new Date(t); return (d.getMonth() + 1) + '月' + d.getDate() + '日'; }
 function memMaybeDigest(char) {
+  if (!char) return Promise.resolve();
   var q = memFading[char.id] || [], cfg = memCfgOf(char);
-  if (!char || char.isGroup || !q.length || memDigestBusy[char.id]) return Promise.resolve();
-  if (!cfg.on || !cfg.types.long) { delete memFading[char.id]; mphoneStore.save('mphone_mem_fading', memFading); return Promise.resolve(); }   // 不让记长期就照以前忘掉
+  if (char.isGroup || !q.length || memDigestBusy[char.id]) return Promise.resolve();
+  if (!cfg.on || !cfg.types.long) return Promise.resolve();
   if (q.length < 8 && Date.now() - (q[0].expired || 0) < MEM_DAY / 2) return Promise.resolve();
   var api = getApiCfg(char);
   if (!api.url || !api.key || !api.model) return Promise.resolve();
-  var batch = q.slice().sort(function(a, b) { return a.time - b.time; }), userName = (typeof resolveCharAccount === 'function' && resolveCharAccount(char).nickname) || '用户';
+  var batch = q.slice().sort(function(a, b) { return a.time - b.time; }).slice(0, MEM_DIGEST_BATCH), userName = (typeof resolveCharAccount === 'function' && resolveCharAccount(char).nickname) || '用户';
   var from = memDigestDate(batch[0].time), to = memDigestDate(batch[batch.length - 1].time), range = from === to ? from : from + '～' + to;
   var prompt = '你是记忆整理助手。下面是「' + memCharName(char) + '」' + range + '记下的一些短期记忆（几天内有用的小事，现在过了几天了）。\n' +
     batch.map(function(m) { return '· ' + memDigestDate(m.time) + ' ' + m.text + (m.scene === 'drama' ? '（发生在剧情空间）' : ''); }).join('\n') +
@@ -260,7 +288,8 @@ function memMaybeDigest(char) {
   memDigestBusy[char.id] = true;
   return llmRequest([{ role: 'user', content: prompt }], { stream: false, cfg: api }).then(function(text) {
     text = String(text || '').replace(/^摘要[:：]\s*/, '').trim();
-    if (text) memAdd(char, { type: 'long', text: range + '的小事：' + text, source: 'digest', time: batch[batch.length - 1].time, dupAt: 0.97 });
+    if (!text) return;   // 模型没有返回摘要，保留原文供下次重试。
+    memAdd(char, { type: 'long', text: range + '的小事：' + text, source: 'digest', time: batch[batch.length - 1].time, dupAt: 0.97 });
     var left = (memFading[char.id] || []).filter(function(m) { return batch.indexOf(m) < 0; });
     if (left.length) memFading[char.id] = left; else delete memFading[char.id];
     mphoneStore.save('mphone_mem_fading', memFading);
@@ -342,7 +371,7 @@ function memoryContextFor(char, hist) {
     var lines = [], youName = (typeof resolveCharAccount === 'function' && resolveCharAccount(char).nickname) || '用户';
     if (knowText) lines.push('🌸 你知道的' + youName + '（熟悉的人不用回想就知道的事，自然地照顾到就好，不用提起）：\n' + knowText);
     if (timeline.length) lines.push('🕰 ' + youName + '的时间线（' + youName + '生活里长久的变化和重要节点，按时间排；后面的变化取代前面的说法，聊到相关的事时以最新的为准）：\n' +
-      timeline.map(function(m) { return '· ' + memWhenText(m.when || m.time) + '（' + memAgo(m.when || m.time) + '）' + m.text; }).join('\n'));
+      timeline.map(function(m) { return '· ' + (m.when ? memWhenText(m.when, m.whenPrecision) : '日期未标明') + '：' + m.text; }).join('\n'));
     if (msText) lines.push('📌 你们关系里的重要节点：\n' + msText);
     if (precious.length) lines.push('💎 珍贵的回忆：\n' + precious.map(function(m) { return memLine(m, [memWhereText(m)]); }).join('\n'));
     if (rec.length) lines.push('想起来的记忆：\n' + rec.map(function(r) {

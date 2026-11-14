@@ -84,8 +84,17 @@
     }
   }
 
-  // 打开设置时刷新占用
-  dockSettings.addEventListener('click', function() { setTimeout(renderUsage, 50); });
+  // 只在打开数据管理所在页时统计，切换主 API 时无需遍历所有聊天和图片。
+  var assistTab = document.querySelector('#settingsSubnav [data-stab="assist"]');
+  var usageTimer = null;
+  function queueUsage() {
+    clearTimeout(usageTimer);
+    usageTimer = setTimeout(function() {
+      if (assistTab.classList.contains('active') && document.getElementById('settingsScreen').classList.contains('active')) renderUsage();
+    }, 60);
+  }
+  assistTab.addEventListener('click', queueUsage);
+  dockSettings.addEventListener('click', queueUsage);
 
   // 导出：选「分享 / 下载」（见 js/settings/backup.js）
   exportRow.addEventListener('click', function() { openBackupExport(); });

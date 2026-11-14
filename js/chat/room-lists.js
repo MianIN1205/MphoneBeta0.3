@@ -18,7 +18,7 @@
     crAlbumFileInput.addEventListener('change', function() { sendPickedImage(this.files); });   // 能多选
   }
 })();
-// 选好（或拍好）的照片：先在小手机里看一眼再发（用户要的）；相册能多选（最多 9 张），预览里点一张取消 / 选上，长按看大图
+// 选好（或拍好）的照片：先在小手机里看一眼再发（用户要的）；相册能多选（最多 9 张），点缩略图看大图，右上角勾选决定发送哪些
 // 和回车一样，只发自己的，不叫 AI
 var PICK_MAX = 9;
 function confirmPickedImage(srcs, onSend) {
@@ -41,15 +41,28 @@ function confirmPickedImage(srcs, onSend) {
   srcs.forEach(function(src, i) {
     var cell = document.createElement('div');
     cell.className = 'pick-cell on';
+    var view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'pick-zoom';
+    view.setAttribute('aria-label', '预览第 ' + (i + 1) + ' 张图片');
     var img = document.createElement('img');
     img.src = src; img.alt = '';
-    cell.appendChild(img);
+    view.appendChild(img);
+    view.addEventListener('click', function() { openImgViewer(src, { preview: true }); });
+    cell.appendChild(view);
     if (!one) {
-      var mark = document.createElement('i');
+      var mark = document.createElement('button');
+      mark.type = 'button';
+      mark.className = 'pick-check';
+      mark.setAttribute('aria-label', '选择第 ' + (i + 1) + ' 张图片');
+      mark.setAttribute('aria-pressed', 'true');
+      mark.addEventListener('click', function() {
+        on[i] = !on[i];
+        mark.setAttribute('aria-pressed', String(on[i]));
+        cell.classList.toggle('on', on[i]);
+        sync();
+      });
       cell.appendChild(mark);
-      var big = function() { if (typeof openImgViewer === 'function') openImgViewer(src); };
-      if (typeof bindPress === 'function') bindPress(cell, function() { on[i] = !on[i]; cell.classList.toggle('on', on[i]); sync(); }, big);
-      else cell.addEventListener('click', function() { on[i] = !on[i]; cell.classList.toggle('on', on[i]); sync(); });
     }
     grid.appendChild(cell);
   });
@@ -62,15 +75,21 @@ function confirmPickedImage(srcs, onSend) {
 }
 function sendPickedImage(files) {
   if (!files || openingChatCharIdx === -1) return;
+  var char = charList[openingChatCharIdx], subview = currentCrSubView;
+  if (!char) return;
+  var sameRoom = function() {
+    return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === char && currentCrSubView === subview;
+  };
   var list = Array.prototype.slice.call(files.length !== undefined ? files : [files], 0, PICK_MAX);
   if (!list.length) return;
-  if (files.length > PICK_MAX) showToast('一次最多选 ' + PICK_MAX + ' 张，先发前 ' + PICK_MAX + ' 张', 'plain');
+  if (files.length > PICK_MAX) showToast('一次最多选 ' + PICK_MAX + ' 张，请确认前 ' + PICK_MAX + ' 张', 'plain');
   var srcs = [], left = list.length;
   var finish = function() {
-    if (--left) return;
+    if (--left || !sameRoom()) return;
     var got = srcs.filter(Boolean);
     if (!got.length) { showToast('图片读不出来', 'error'); return; }
     confirmPickedImage(got, function(chosen) {
+      if (!sameRoom()) { showToast('聊天窗口已切换，请重新选图', 'plain'); return; }
       var hist = getActiveHistory(openingChatCharIdx), now = Date.now();
       chosen.forEach(function(src, k) {
         var im = { role: 'user', content: '[图片消息]', imgSrc: src, time: now + k };
@@ -142,12 +161,19 @@ function sendPickedImage(files) {
     });
   }
 
-  // 加号抽屉两页：左右滑，下面两个小圆点
+  // 保留滑动，并让桌面用户可以直接点页码圆点。
   var plusPages = document.getElementById('crPlusPages');
-  if (plusPages) plusPages.addEventListener('scroll', function() {
-    var cur = Math.round(plusPages.scrollLeft / Math.max(1, plusPages.clientWidth));
-    document.querySelectorAll('#crPlusDots i').forEach(function(d, i) { d.classList.toggle('on', i === cur); });
+  var plusDots = document.querySelectorAll('#crPlusDots button');
+  plusDots.forEach(function(dot, index) {
+    dot.addEventListener('click', function(e) {
+      e.stopPropagation();
+      plusPages.scrollLeft = plusPages.clientWidth * index;
+    });
   });
+  plusPages.addEventListener('scroll', function() {
+    var current = Math.round(plusPages.scrollLeft / Math.max(1, plusPages.clientWidth));
+    plusDots.forEach(function(dot, index) { dot.setAttribute('aria-current', String(index === current)); });
+  }, { passive: true });
 
   // 点击聊天内容区或聚焦输入框时收起底部加号面板
   if (chatRoomContent) {

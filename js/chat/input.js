@@ -60,7 +60,7 @@ crSendBtn.addEventListener('click', function(e) {
 
 // 键盘 Enter（无 Shift）：将输入框内容作为一条用户消息发送，不触发 AI
 crInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
     e.preventDefault();
     var text = crInput.value.trim();
     if (!text) return;

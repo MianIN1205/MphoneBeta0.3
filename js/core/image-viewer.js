@@ -14,20 +14,31 @@ function ivReset() { ivState.scale = 1; ivState.x = 0; ivState.y = 0; ivApply();
 
 function openImgViewer(src, info) {
   info = info || {};
+  clearTimeout(ivTapTimer);
+  ivLastTap = 0;
   ivState.src = src;
   ivState.source = info.source || '';
   ivState.author = info.author || '';
   imgViewerImg.src = src;
   // 收藏页里打开的图片不再显示「收藏」
-  document.getElementById('imgViewerFav').style.display = info.noFav ? 'none' : '';
-  document.getElementById('imgViewerShare').style.display = ivCanShare() ? '' : 'none';
+  imgViewer.classList.toggle('is-preview', !!info.preview);
+  document.getElementById('imgViewerFav').hidden = !!(info.noFav || info.preview);
+  document.getElementById('imgViewerSave').hidden = !!info.preview;
+  document.getElementById('imgViewerShare').hidden = !!info.preview || !ivCanShare();
   ivReset();
   imgViewer.classList.add('open');
 }
 function closeImgViewer() {
+  clearTimeout(ivTapTimer);
+  ivLastTap = 0;
   imgViewer.classList.remove('open');
   imgViewerImg.removeAttribute('src');
 }
+
+document.getElementById('imgViewerClose').addEventListener('click', closeImgViewer);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && imgViewer.classList.contains('open')) closeImgViewer();
+});
 
 // 打开入口（捕获阶段；长按弹出菜单后松手的那次点击不打开）
 document.addEventListener('click', function(e) {
@@ -54,7 +65,7 @@ function ivDist() {
   return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
 }
 imgViewer.addEventListener('pointerdown', function(e) {
-  if (e.target.closest('.img-viewer-bar')) return;
+  if (e.target.closest('.img-viewer-bar, #imgViewerClose')) return;
   imgViewer.setPointerCapture(e.pointerId);
   ivPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
   var n = Object.keys(ivPointers).length;
@@ -118,7 +129,10 @@ function ivCanShare() {
   try { return !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'a.png', { type: 'image/png' })] })); } catch (_) { return false; }
 }
 function ivBlob() {
-  return fetch(ivState.src).then(function(r) { return r.blob(); }).then(function(blob) {
+  return fetch(ivState.src).then(function(r) {
+    if (!r.ok) throw new Error('图片读取失败');
+    return r.blob();
+  }).then(function(blob) {
     if (!blob.type) blob = new Blob([blob], { type: 'image/png' });
     return { blob: blob, name: 'mphone-' + Date.now() + '.' + (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg') };
   });
@@ -142,6 +156,7 @@ document.getElementById('imgViewerSave').addEventListener('click', function(e) {
     a.href = src;
     a.download = name;
     a.target = '_blank';
+    a.rel = 'noopener noreferrer';
     document.body.appendChild(a);
     a.click();
     a.remove();
