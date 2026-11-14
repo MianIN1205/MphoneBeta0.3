@@ -1,0 +1,15 @@
+{
+  "name": "眠花糖机 · Muse",
+  "short_name": "眠花糖机·Muse",
+  "description": "眠花糖机 Muse 小手机",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6E7F6",
+  "theme_color": "#FFFFFF",
+  "icons": [
+    { "src": "icons/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,74 @@
+/* 眠花糖机 — 发文件：聊天里的文件卡片、看全文的弹窗 */
+
+/* 聊天里的文件卡片（颜色跟着气泡走，左边名字，右边文件图标） */
+.chat-msg-row .chat-msg-bubble.file-bubble { display: flex; align-items: center; gap: 10px; width: 200px; max-width: 70%; box-sizing: border-box;
+  padding: 10px 12px; cursor: pointer; }
+.file-card-info { flex: 1; min-width: 0; }
+.file-card-name { font-size: 13.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all; }
+.file-card-sub { font-size: 10.5px; opacity: 0.6; margin-top: 4px; }
+.file-card-icon { position: relative; width: 34px; height: 40px; flex-shrink: 0; }
+.file-card-icon svg { width: 100%; height: 100%; fill: #fdeef2; stroke: #d98a9c; stroke-width: 1.4; stroke-linejoin: round; }
+.file-card-icon span { position: absolute; left: 0; right: 0; bottom: 7px; text-align: center; font-size: 8px; font-weight: 700; color: #c06080; letter-spacing: 0.3px; }
+
+/* 看全文 */
+.file-view-modal { width: 310px; max-height: 82%; }
+.file-view-sub { font-size: 11px; color: #aaa; text-align: center; margin-top: -6px; }
+.file-view-body { flex: 1; min-height: 80px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.65; color: #333;
+  background: rgba(255, 255, 255, 0.85); border: 1.5px solid rgba(210, 180, 180, 0.28); border-radius: 14px; padding: 10px 12px; }
+
+/* 相册三选一、文字图片消息、剧情窗口的快捷符号（js/chat/compose-plus.js） */
+.album-pop { position: fixed; z-index: 10050; display: none; min-width: 132px; padding: 6px; border-radius: 16px;
+  background: rgba(255, 246, 250, 0.58); backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: 0 8px 28px rgba(120, 70, 80, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transform-origin: center bottom; font-family: inherit; }
+.album-pop.open { display: block; animation: albumPopIn 0.16s ease; }
+@keyframes albumPopIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.album-pop-list { display: flex; flex-direction: column; }
+.album-pop-btn { padding: 10px 18px; border: none; border-radius: 11px; background: none; font-size: 14px; color: #444; font-family: inherit; cursor: pointer; text-align: center; -webkit-tap-highlight-color: transparent; }
+.album-pop-btn:active { background: rgba(255, 255, 255, 0.45); }
+.album-pop-btn + .album-pop-btn { border-top: 1px solid rgba(255, 255, 255, 0.55); border-radius: 0; }
+.album-pop .album-text-input { background: rgba(255, 255, 255, 0.6); }
+#albumPickText { width: 240px; padding: 4px; }
+.album-pop-acts { display: flex; gap: 8px; }
+.album-pop-acts .mine-acc-btn { flex: 1; }
+.album-text-input { margin: 2px 0 8px; resize: none; line-height: 1.6; width: 100%; box-sizing: border-box; }
+.chat-msg-bubble.textimg-bubble { padding: 0; width: 132px; background: none !important; box-shadow: none !important; }
+.chat-msg-bubble.textimg-bubble .feed-textimg { width: 132px; border-radius: 12px; }
+.chat-msg-bubble.textimg-bubble .feed-textimg span { font-size: 12px; }
+.chat-room-bottom.drama-mode { flex-wrap: wrap; }
+.cr-symbol-bar { order: -1; flex-basis: 100%; display: flex; gap: 6px; padding: 0 2px 2px; overflow-x: auto; scrollbar-width: none; }
+.cr-symbol-bar::-webkit-scrollbar { display: none; }
+.cr-symbol-btn { flex-shrink: 0; min-width: 46px; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(200, 150, 160, 0.3);
+  background: rgba(255, 255, 255, 0.7); color: #8a5a6a; font-size: 13px; font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cr-symbol-btn:active { background: #fff; }
+.cr-symbol-sum { margin-left: auto; }   /* 「总结」靠最右边 */
+/* 剧情每轮的摘要：气泡 / 文本框最下面，居左灰色小字、不加背景（用户要的）；开了「显示每轮摘要」才显示 */
+.cr-recap-line { display: none; margin-top: 8px; text-align: left; font-size: 11px; line-height: 1.5; font-weight: 400; color: #999; opacity: 0.85; background: none; }
+#appChatRoom.cr-show-recap .cr-recap-line { display: block; }
+.drama-save-list { max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; }
+.drama-save-row { display: block; width: 100%; text-align: left; padding: 9px 11px; margin-bottom: 6px; border: 1px solid rgba(200, 150, 160, 0.25); border-radius: 12px; background: rgba(255, 255, 255, 0.7); font: inherit; color: inherit; }
+.drama-save-name { font-size: 13.5px; font-weight: 600; color: #5a4650; }
+.drama-save-range { margin-left: 8px; font-size: 11px; color: #b09aa4; }
+.drama-save-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 3px; font-size: 12px; line-height: 1.5; color: #8a7a82; pointer-events: none; }
+.drama-save-name, .drama-save-range { pointer-events: none; }
+.drama-save-range-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #7a6a72; }
+.drama-save-range-row input { width: 64px; text-align: center; padding-left: 4px; padding-right: 4px; }
+.drama-sum-dlg .drama-sum-text { width: 100%; resize: vertical; line-height: 1.6; user-select: text; -webkit-user-select: text; }
+
+
+/* MianIN 改样式的卡片里：缩小版效果图（js/char/css-preview.js）和「看代码」 */
+.cr-css-mini { position: relative; width: 230px; max-width: 100%; overflow: hidden; border-radius: 12px; margin: 4px 0 6px; background: rgba(0, 0, 0, 0.03); box-shadow: inset 0 0 0 1px rgba(210, 180, 190, 0.35); pointer-events: none; }
+.cr-css-mini iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+.cr-action-code-btn { border: none; background: none; padding: 2px 0; font-size: 11.5px; color: #b08a9a; font-family: inherit; cursor: pointer; }
+
+/* 选好的照片先在小手机里看一眼（js/chat/room-lists.js 的 confirmPickedImage）：一张就大图，多张是格子，点一张取消 / 选上，长按看大图 */
+.pick-modal { width: 320px; padding: 14px; }
+.pick-one img { display: block; max-width: 100%; max-height: 55vh; margin: 0 auto; border-radius: 12px; object-fit: contain; }
+.pick-title { font-size: 14px; }
+.pick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; max-height: 55vh; overflow-y: auto; }
+.pick-cell { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; }
+.pick-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.15s; }
+.pick-cell:not(.on) img { opacity: 0.4; }
+.pick-cell i { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #fff; background: rgba(0, 0, 0, 0.18); box-sizing: border-box; }
+.pick-cell.on i { background: #E58FA3; }
+.pick-cell.on i::after { content: ''; position: absolute; left: 6px; top: 2px; width: 4px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }

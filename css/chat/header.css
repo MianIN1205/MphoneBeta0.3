@@ -1,0 +1,117 @@
+/* 眠花糖机 — Chat 消息页顶栏右侧控件 */
+
+/* =============================================
+   消息页顶栏右侧控件
+   ============================================= */
+.msg-right-wrap {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+  position: relative;
+}
+.msg-right-wrap.visible { display: flex; }
+
+.msg-toggle-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(0,0,0,0.07);
+  border-radius: 20px;
+  padding: 3px;
+  position: relative;
+}
+
+.msg-toggle-slider {
+  position: absolute;
+  width: 30px; height: 30px;
+  background: #fff;
+  border-radius: 15px;
+  left: 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.06);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.msg-toggle-slider.contacts { transform: translateX(30px); }
+
+.msg-toggle-btn {
+  width: 30px; height: 30px;
+  background: none; border: none;
+  border-radius: 15px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  position: relative; z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.msg-toggle-btn svg {
+  width: 14px; height: 14px;
+  stroke: #bbb; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; fill: none;
+  transition: stroke 0.2s ease;
+}
+
+.msg-toggle-btn.active svg { stroke: #D05858; }
+/* 另一边（聊天 / 剧情）来了新消息的小红点 */
+.msg-toggle-btn { position: relative; }
+.msg-toggle-btn.has-new::after { content: ""; position: absolute; top: 3px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #E05555; box-shadow: 0 0 0 1.5px #fff; }
+
+.msg-plus-btn {
+  background: none; border: none;
+  cursor: pointer; padding: 4px 3px;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.msg-plus-btn svg {
+  width: 20px; height: 20px;
+  stroke: #444; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; fill: none;
+}
+
+.msg-plus-popup {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: rgba(255,248,252,0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.14), 0 1px 4px rgba(0,0,0,0.08);
+  border: 1px solid rgba(255,255,255,0.8);
+  z-index: 300;
+  min-width: 148px;
+  transform-origin: top right;
+  transform: scale(0.92);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease;
+}
+
+.msg-plus-popup.open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.msg-plus-popup-item {
+  padding: 12px 16px;
+  font-size: 14px; color: #444;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  transition: background 0.15s;
+}
+
+.msg-plus-popup-item:first-child { border-radius: 14px 14px 0 0; }
+.msg-plus-popup-item:last-child { border-bottom: none; border-radius: 0 0 14px 14px; }
+.msg-plus-popup-item:active { background: rgba(240,128,128,0.08); }
+
+.msg-plus-popup-item svg {
+  width: 15px; height: 15px;
+  stroke: #aaa; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; fill: none;
+  flex-shrink: 0;
+}

@@ -1,0 +1,74 @@
+/* 眠花糖机 — 聊天窗口状态栏面板 */
+
+/* 状态栏面板：点顶栏角色名展开；面板本身透明，只有卡片有底 */
+#appChatRoom .chat-room-title-text { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cr-status-panel {
+  position: absolute; left: 0; right: 0; z-index: 15;
+  max-height: 62%; overflow: hidden; box-sizing: border-box;
+  padding: 8px 0 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  opacity: 0; transform: scale(0.98); transform-origin: top center;
+  pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.cr-status-panel::-webkit-scrollbar { display: none; }
+.cr-status-panel.open { opacity: 1; transform: scale(1); pointer-events: auto; }
+.cr-status-panel.from-name { transform-origin: bottom left; }   /* 从名字上方长出来（仿siya） */
+/* 面板开着时：后面轻轻模糊、点不到后面的按钮（用户要的触摸保护），点模糊的地方收起面板 */
+.cr-sp-mask { position: absolute; left: 0; right: 0; bottom: 0; z-index: 14; opacity: 0; pointer-events: none; transition: opacity 0.18s ease;
+  background: rgba(255, 255, 255, 0.12); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.cr-sp-mask.open { opacity: 1; pointer-events: auto; }
+/* 一次一条，左右滑动翻看历史 */
+.cr-sp-track {
+  display: flex; align-items: flex-start;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+}
+.cr-sp-track::-webkit-scrollbar { display: none; }
+.cr-sp-item {
+  flex: 0 0 100%; box-sizing: border-box; padding: 0 14px;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  display: flex; flex-direction: column; gap: 3px;
+  /* 每一条最高到输入栏上面（--sp-max 在 openStatusPanel 里算）；卡片在 .cr-sp-scroll 里自己上下滑，按钮固定在下面 */
+  max-height: calc(var(--sp-max, 420px) - 40px); overflow: hidden;
+}
+.cr-sp-scroll {
+  /* 只管上下滑；左右滑要交给外面那条（以前 overscroll-behavior 两个方向都拦住了，左右滑不动，用户反馈过） */
+  flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; overscroll-behavior-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; border-radius: 10px;
+}
+.cr-sp-scroll::-webkit-scrollbar { display: none; }
+/* 最下面固定：正中间 删除 / 收藏 / 关闭 */
+.cr-sp-acts { display: flex; justify-content: center; gap: 10px; padding: 10px 0 6px; flex-shrink: 0; }
+.cr-sp-act { padding: 6px 16px; border-radius: 14px; border: 1px solid rgba(220, 180, 190, 0.5); background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #8a6a76; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+.cr-sp-act:active { background: #fff; }
+.cr-sp-count { align-self: center; font-size: 10.5px; color: #b9a0a8; }
+.cr-sp-time { font-size: 10.5px; color: #b9a0a8; padding-left: 4px; flex-shrink: 0; }
+.cr-status-panel .cr-status-card {
+  margin: 0; max-width: none; align-self: stretch; white-space: normal;
+  box-shadow: 0 4px 16px rgba(200,140,150,0.16);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+/* 只有文字的状态：线条本卡片（左边一道红边线，文字落在横线上） */
+.cr-status-panel .cr-status-card.cr-status-lined {
+  background-color: rgba(255,253,247,0.94);
+  background-image:
+    linear-gradient(to right, transparent 26px, rgba(232,150,160,0.55) 26px, rgba(232,150,160,0.55) 27px, transparent 27px),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 25px, rgba(150,175,205,0.38) 25px, rgba(150,175,205,0.38) 26px);
+  background-position: 0 0, 0 8px;
+  padding: 8px 12px 10px 36px;
+  font-size: 12.5px; line-height: 26px; color: #6a5560;
+  border: 1px solid rgba(220,200,190,0.55); border-radius: 8px;
+}
+.cr-sp-empty {
+  align-self: center; font-size: 12px; color: #a08890; padding: 8px 14px;
+  background: rgba(255,255,255,0.75); border-radius: 12px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+
+/* 收藏里的状态栏卡片 */
+.fav-item-status { margin: 6px 0 0 !important; max-width: none !important; }
+
+/* 小梦改状态栏的确认卡片里的效果图（js/chat/status-panel.js 的 statusPreviewEl） */
+.cr-action-status-preview { max-height: 240px; overflow: auto; margin: 6px 0 4px; border-radius: 10px; }
+.cr-action-status-preview .cr-status-card { margin: 0; max-width: none; }

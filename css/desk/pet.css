@@ -1,0 +1,86 @@
+/* 眠花糖机 — 桌宠：桌面上的「桌宠」app（小窝、宠物列表、添加 / 编辑），以及在屏幕上爬来爬去的宠物 */
+
+/* 屏幕上的一层：只有小螃蟹本身能点，其他地方点穿过去。只在桌面时排在各个界面下面（被盖住就藏起来），「也跟着」时排在界面上、弹窗下 */
+.pet-layer { position: absolute; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
+.pet-layer.follow { z-index: 440; }
+.pet-layer.off { display: none; }
+
+.pet { position: absolute; left: 0; top: 0; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent; cursor: grab; will-change: transform; }
+.pet.drag { cursor: grabbing; }
+.pet-inner { position: relative; width: 100%; height: 100%; transform-origin: 50% 100%; }   /* 压扁 / 拉长 / 摇摆都在 pet.js 里每帧算 */
+.pet.drag .pet-inner { transform-origin: 50% 0; }   /* 拎起来时从上面晃 */
+.pet-svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 2px rgba(120, 70, 50, 0.18)); }
+
+/* 说话的小泡泡、爱心、睡觉的 z */
+.pet-say { position: absolute; left: 50%; bottom: 100%; margin-bottom: 4px; transform: translateX(-50%) scale(0.92); opacity: 0;
+  background: rgba(255, 255, 255, 0.94); color: #7a6080; font-size: 11px; line-height: 1.3; padding: 3px 8px; border-radius: 10px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(192, 96, 128, 0.16); pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+.pet-say.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.pet-heart { position: absolute; left: 50%; top: 0; color: #f08aa6; font-size: 13px; pointer-events: none; animation: petHeart 0.9s ease-out forwards; }
+@keyframes petHeart { from { opacity: 0.95; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -26px); } }
+.pet-z { position: absolute; right: -4px; top: -6px; font-size: 10px; font-weight: 600; color: #a594b0; pointer-events: none; opacity: 0; }
+.pet.sleep .pet-z { animation: petZ 2.4s ease-out infinite; }
+@keyframes petZ { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: 0.9; } 100% { opacity: 0; transform: translate(6px, -14px); } }
+
+/* 「桌宠」app */
+#appPet { transform-origin: 39% 38%; }
+.pet-home { position: relative; height: 260px; border-radius: 22px; overflow: hidden; margin-bottom: 10px;
+  background: linear-gradient(to bottom, #fff7fa 0%, #fdeef4 62%, #f6dfe8 62%, #f3d8e3 100%);
+  box-shadow: inset 0 0 0 1px rgba(192, 96, 128, 0.08); }
+.pet-home-tip { text-align: center; font-size: 11px; color: #b9a6bf; margin: 0 0 14px; }
+.pet-set-hint { font-size: 10.5px; color: #bbb; line-height: 1.5; margin-top: 4px; }
+
+/* 图片宠物：没有腿和钳子，跟着身子一起压扁、摇摆 */
+.pet-img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(120, 70, 50, 0.18));
+  transition: transform 0.25s; pointer-events: none; -webkit-user-drag: none; }
+
+/* 小窝里的宠物列表 */
+.pet-row { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid rgba(210, 180, 190, 0.22); cursor: pointer; }
+.pet-row-look { width: 38px; height: 38px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.pet-row-look .pet-svg, .pet-row-look .pet-img { width: 34px; height: 34px; }
+.pet-row-info { flex: 1; min-width: 0; }
+.pet-row-name { font-size: 14.5px; font-weight: 500; color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-row-sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+.pet-list-empty { text-align: center; font-size: 12px; color: #bbb; padding: 12px 0 6px; }
+.pet-add-btn { width: 100%; margin-top: 10px; padding: 9px 0; border: 1.5px dashed rgba(208, 88, 88, 0.35); border-radius: 12px;
+  background: transparent; color: #c06080; font-size: 13px; cursor: pointer; }
+
+/* 添加 / 编辑 */
+.pet-edit-modal { max-height: 86%; }
+.pet-edit-scroll { overflow-y: auto; min-height: 0; flex: 1; padding: 0 2px; }
+.pet-edit-preview { height: 84px; margin-bottom: 4px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(to bottom, #fff7fa 0%, #fdeef4 66%, #f6dfe8 66%); }
+.pet-edit-preview .pet-svg, .pet-edit-preview .pet-img { width: 64px; height: 64px; }
+.pet-edit-label { font-size: 11px; font-weight: 600; color: #aaa; letter-spacing: 0.5px; margin: 10px 0 6px; }
+.pet-edit-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1.5px solid rgba(210, 180, 180, 0.35);
+  background: rgba(255, 255, 255, 0.9); font-size: 13.5px; color: #333; font-family: inherit; outline: none; }
+.pet-edit-input:focus { border-color: rgba(208, 88, 88, 0.5); }
+.pet-edit-words { resize: vertical; line-height: 1.5; }
+.pet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pet-chip { padding: 5px 11px; border-radius: 14px; border: 1.5px solid rgba(210, 180, 180, 0.35); background: rgba(255, 255, 255, 0.85);
+  font-size: 12.5px; color: #665; cursor: pointer; font-family: inherit; }
+.pet-chip.active { border-color: #D05858; background: rgba(255, 240, 242, 0.95); color: #c04a5a; }
+.pet-swatches { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.pet-swatches > span { display: contents; }
+.pet-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08); cursor: pointer; padding: 0; }
+.pet-swatch.active { box-shadow: 0 0 0 2px #D05858; }
+.pet-color-input { width: 28px; height: 28px; border: none; padding: 0; background: none; cursor: pointer; }
+
+/* 动作的道具（电脑、书）和跳舞的小音符；动作本身在 pet.js 的 Pet.pose 里 */
+.pet-prop { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.pet-note { position: absolute; left: 20%; top: -4px; color: #b9a6e0; font-size: 12px; pointer-events: none; animation: petNote 1.2s ease-out forwards; }
+.pet-note.r { left: 70%; color: #f08aa6; }
+@keyframes petNote { from { opacity: 0.95; transform: translate(0, 0) rotate(-10deg); } to { opacity: 0; transform: translate(6px, -22px) rotate(10deg); } }
+.pet .pc-glow { animation: petGlow 1.4s steps(2) infinite; }
+@keyframes petGlow { 0% { opacity: 0.35; } 50% { opacity: 0.75; } }
+.pet.is-img.act-pc .pet-img, .pet.is-img.act-book .pet-img { transform: translateY(4%); }
+.pet-home-acts { justify-content: center; margin: 0 0 8px; }
+
+
+/* 桌宠认人：关联的角色有新消息时头上的小信封，轻轻上下浮 */
+.pet-mail { position: absolute; left: 50%; top: -14px; width: 18px; height: 14px; margin-left: -9px; opacity: 0; transform: translateY(4px) scale(0.8);
+  transition: opacity 0.2s, transform 0.2s; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(200, 100, 130, 0.3)); }
+.pet-mail svg { width: 100%; height: 100%; display: block; }
+.pet.has-mail .pet-mail { opacity: 1; transform: none; animation: petMailBob 1.6s ease-in-out infinite; }
+@keyframes petMailBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }

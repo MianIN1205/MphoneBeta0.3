@@ -1,0 +1,558 @@
+// 眠花糖机 — 聊天室消息显示：气泡、动作小字、引用、小时间、重新生成的版本切换、拍一拍、撤回提示、图片消息
+
+// 消息头像：角色用角色头像，自己用本聊天选用账号的头像
+function createMsgAvatar(role) {
+  var av = document.createElement('div');
+  av.className = 'chat-msg-avatar';
+  var char = charList[openingChatCharIdx];
+  if (role !== 'user' && crRowSpeaker && char && char.isGroup) char = charList[findCharIdx(crRowSpeaker)] || char;   // 群聊：这条是谁说的就画谁
+  if (role === 'user') {
+    var acc = resolveCharAccount(char);
+    paintAvatar(av, acc && acc.avatar, '');
+  } else {
+    paintCharAvatar(av, char);
+  }
+  return av;
+}
+var crRowSpeaker = null;   // 群聊里正在画的这条是哪个成员说的（renderHistMsg 里设）
+// 往上翻着看旧消息时，新消息来了不把人拽到最下面（用户要的，像 QQ）：底部冒一个「↓ N 条新消息」，点了才跳下去；
+// 本来就在最底下就照常跟着滚。list._away 只在用户自己滚动时更新（离底部超过 150px 算翻上去了）
+function crStick(list) {
+  if (!list || list._needBottom) return;
+  if (!list._away) list.scrollTop = list.scrollHeight;
+}
+function crPill(list) {
+  if (!list._pill) {
+    var p = document.createElement('button');
+    p.className = 'cr-new-pill';
+    p.addEventListener('click', function() { list._away = false; list.scrollTop = list.scrollHeight; crPillReset(list); });
+    list.parentNode.appendChild(p);
+    list._pill = p;
+  }
+  return list._pill;
+}
+function crPillReset(list) { list._newRows = []; if (list._pill) list._pill.classList.remove('show'); }
+function crPillPaint(list) {
+  list._newRows = (list._newRows || []).filter(function(r) { return r.parentNode === list && r.style.display !== 'none'; });
+  var n = list._newRows.length, p = crPill(list);
+  p.textContent = '↓ ' + n + ' 条新消息';
+  p.classList.toggle('show', n > 0 && list._away && list.offsetParent !== null);
+}
+['chatMsgList', 'dramaMsgList'].forEach(function(id) {
+  var list = document.getElementById(id);
+  if (!list) return;
+  list.addEventListener('scroll', function() {
+    if (list.clientHeight !== list._h) return;   // 列表刚变高 / 变矮（键盘、抽屉），交给下面的 ResizeObserver
+    list._away = list.scrollHeight - list.scrollTop - list.clientHeight > 150;
+    if (!list._away) crPillReset(list);
+  });
+  // 键盘弹出、抽屉打开时列表变矮：本来在最底下就接着贴在最底下（用户反馈过要手动往下滑才看得到最新的）
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function() {
+    if (list.clientHeight === list._h) return;
+    list._h = list.clientHeight;
+    if (!list._away) list.scrollTop = list.scrollHeight;
+  }).observe(list);
+  // 翻上去的时候新来的消息（正在输入的小点不算）记下来，数出有几条
+  new MutationObserver(function(ms) {
+    if (!list._away) return;
+    ms.forEach(function(m) { Array.prototype.forEach.call(m.addedNodes, function(n) {
+      if (n.classList && n.classList.contains('chat-msg-row') && !n.querySelector('.typing-dots')) (list._newRows = list._newRows || []).push(n);
+    }); });
+    crPillPaint(list);
+  }).observe(list, { childList: true });
+});
+
+function appendMsg(role, content, isTyping, targetListEl, targetEmptyEl) {
+  var list  = targetListEl  || getActiveMsgListEl();
+  var empty = targetEmptyEl || getActiveEmptyEl();
+  if (empty) empty.style.display = 'none';
+  var row = document.createElement('div');
+  row.className = 'chat-msg-row ' + (role === 'user' ? 'user' : 'ai');
+  row.appendChild(createMsgAvatar(role));
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-msg-bubble';
+  if (isTyping) bubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  else setBubbleText(bubble, content, role !== 'user', list.id === 'chatMsgList');
+  row.appendChild(bubble);
+  list.appendChild(row);
+  placeActionNotes(row);
+  crStick(list);
+  return { row: row, bubble: bubble };
+}
+
+// 消息里带 HTML（<div>、<span>、<b>、<br>、<img>、<style>、<details> 这类标签）：直接显示出来（用户要的）。
+// 放进 Shadow DOM，样式只管自己这一条；去掉脚本、事件这些（statusSafeHtml）
+var MSG_HTML_RE = /<(div|span|p|br|b|i|u|s|strong|em|table|tr|td|img|style|details|summary|font|h[1-6]|ul|ol|li|section|blockquote|hr|center|small|mark|ruby|rt|a|pre|code|svg|label|input|button|sup|sub|del|ins)\b[^>]*>/i;
+function msgHtmlLike(s) { return MSG_HTML_RE.test(String(s || '')); }
+function setBubbleHtml(bubble, html) {
+  bubble.textContent = '';
+  bubble.classList.add('cr-html-bubble');
+  var box = document.createElement('div');
+  box.className = 'cr-html-box';
+  box.attachShadow({ mode: 'open' }).innerHTML = '<style>:host{display:block;white-space:normal;word-break:break-word}img{max-width:100%}</style>' +
+    (typeof statusSafeHtml === 'function' ? statusSafeHtml(html) : html.replace(/<script[\s\S]*?<\/script>/gi, ''));
+  bubble.appendChild(box);
+  bubble._actions = { before: [], text: '', after: [] };
+}
+
+// 气泡文字；角色消息里「〔译〕」之后的内容显示为附加翻译
+// isChat：聊天窗口里，角色用 *星号* 包住的动作描写拿到气泡外面，显示成灰色斜体小字（气泡里只留说的话）
+function setBubbleText(bubble, content, isAi, isChat) {
+  content = String(content || '');
+  if (isAi) content = fillMacros(content, charList[openingChatCharIdx]);
+  if (msgHtmlLike(content)) { bubble.classList.remove('cr-action-only'); setBubbleHtml(bubble, content); return; }
+  bubble.classList.remove('cr-html-bubble');
+  var i = isAi ? content.indexOf('〔译〕') : -1;
+  var main = i < 0 ? content : content.slice(0, i).trim();
+  var big = isAi && isChat && typeof charBigBubble === 'function' && charBigBubble(charList[openingChatCharIdx]);   // 仿siya：动作留在气泡里
+  var parts = (isAi && isChat && !big) ? splitActions(main) : { before: [], text: main, after: [] };
+  if (isAi && isChat) parts.text = parts.text.replace(/([^。.…])。$/, '$1');   // 聊天窗口里句尾的句号不显示（记录里留着，TA 看到的是完整的句子）
+  // 只有动作、没有说话：这条就只是一行动作小字
+  var onlyAction = i < 0 && !parts.text && (parts.before.length + parts.after.length) > 0;
+  bubble.classList.toggle('cr-action-only', onlyAction);
+  if (onlyAction) parts = { before: [], text: parts.before.concat(parts.after).join(' '), after: [] };
+  if ((!isChat || big) && !onlyAction && DRAMA_DQ_RE.test(parts.text)) fillDramaText(bubble, parts.text);
+  else bubble.textContent = parts.text;
+  bubble._actions = parts;
+  if (i >= 0) {
+    var tr = document.createElement('span');
+    tr.className = 'cr-translation';
+    tr.textContent = content.slice(i + 3).trim();
+    bubble.appendChild(tr);
+  }
+  // 编辑消息时气泡已经在列表里：重新摆放动作小字
+  if (bubble.parentNode && bubble.parentNode.parentNode) placeActionNotes(bubble.parentNode);
+}
+
+// 把 *动作* 和说的话分开：说话之前的动作放气泡上方，之后的放下方
+function splitActions(text) {
+  var out = { before: [], text: '', after: [] }, said = [];
+  var one = new RegExp('^' + ACTION_SRC + '$');
+  text.split(new RegExp('(' + ACTION_SRC + ')')).forEach(function(part) {
+    if (one.test(part)) (said.length ? out.after : out.before).push(part.slice(1, -1).trim());
+    else if (part.trim()) said.push(part.trim());
+  });
+  out.text = said.join('\n');
+  return out;
+}
+function placeActionNotes(row) {
+  (row._actionNotes || []).forEach(function(el) { el.remove(); });
+  row._actionNotes = [];
+  var bubble = row.querySelector('.chat-msg-bubble');
+  var a = bubble && bubble._actions;
+  if (!a || !row.parentNode) return;
+  var make = function(t, pos) {
+    var n = document.createElement('div');
+    n.className = 'cr-action-note ' + pos;
+    n.textContent = t;
+    row._actionNotes.push(n);
+    return n;
+  };
+  a.before.forEach(function(t) { row.parentNode.insertBefore(make(t, 'before'), row); });
+  var next = row.nextSibling;
+  a.after.forEach(function(t) { row.parentNode.insertBefore(make(t, 'after'), next); });
+}
+
+// 剧情窗口每条前面的信息区：文本框、自定义格式时显示（js/chat/room.js 的 dramaBoxCss），气泡格式时藏着。
+// 名字、时间（.cr-head-time 只有几点几分，.cr-head-date 是完整日期，「章节」风格用）、楼层 #N、字数、编辑按钮（编辑 / 收藏 / ⋯ 更多 = 长按菜单）
+// 类名都给好了，自定义 CSS 能随便摆：.cr-msg-head > .cr-head-who（.cr-head-name .cr-head-time .cr-head-date）、.cr-head-meta（.cr-head-floor .cr-head-words）、.cr-head-acts
+var DRAMA_HEAD_ICONS = {
+  edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  fav: '<svg viewBox="0 0 24 24"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg>',
+  more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>'
+};
+function addDramaHead(row, bubble, m) {
+  if (!row || !bubble || row.querySelector('.cr-msg-head')) return;
+  var char = charList[openingChatCharIdx] || {};
+  var head = document.createElement('div');
+  head.className = 'cr-msg-head';
+  var who = document.createElement('div');
+  who.className = 'cr-head-who';
+  var b = document.createElement('b');
+  b.className = 'cr-head-name';
+  b.textContent = m.role === 'user' ? ((resolveCharAccount(char) || {}).nickname || '我') : (char.charAlias || char.charName || '角色');
+  who.appendChild(b);
+  if (m.time) {
+    var d = new Date(m.time);
+    var t = document.createElement('span');
+    t.className = 'cr-head-time';
+    t.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    who.appendChild(t);
+    var dt = document.createElement('span');
+    dt.className = 'cr-head-date';
+    dt.textContent = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    who.appendChild(dt);
+  }
+  head.appendChild(who);
+  var meta = document.createElement('div');
+  meta.className = 'cr-head-meta';
+  var hist = typeof getDramaHistory === 'function' ? getDramaHistory(openingChatCharIdx) : [];
+  var floor = m._floor || hist.indexOf(m) + 1;   // 小梦改样式的效果图里是复制出来的消息，楼层另外带着
+  if (floor > 0) { var f = document.createElement('span'); f.className = 'cr-head-floor'; f.textContent = '#' + floor; meta.appendChild(f); }
+  var words = String(m.content || '').replace(/\s+/g, '').length;
+  if (words) { var w = document.createElement('span'); w.className = 'cr-head-words'; w.textContent = words + ' 字'; meta.appendChild(w); }
+  head.appendChild(meta);
+  var acts = document.createElement('div');
+  acts.className = 'cr-head-acts';
+  ['edit', 'fav', 'more'].forEach(function(k) {
+    if (k === 'edit' && (m.imgSrc || m.sticker || m.file || m.textImg || m.voice)) return;
+    var btn = document.createElement('button');
+    btn.dataset.hact = k;
+    btn.setAttribute('aria-label', { edit: '编辑', fav: '收藏', more: '更多' }[k]);
+    btn.innerHTML = DRAMA_HEAD_ICONS[k];
+    acts.appendChild(btn);
+  });
+  head.appendChild(acts);
+  row.insertBefore(head, bubble);
+}
+// 剧情窗口里引号中的对话包成 .cr-dq：文本框风格给它换颜色（像酒馆美化那样一眼分出说话和叙述），气泡格式不加颜色；
+// *动作* 包成 .cr-act（星号留着），仿siya 给它浅紫色。聊天窗口用了仿siya 时也这样包（动作留在气泡里）
+var DRAMA_DQ_RE = new RegExp('(“[^”\\n]*”|「[^」\\n]*」|"[^"\\n]*"|' + ACTION_SRC + ')');
+function fillDramaText(el, text) {
+  el.textContent = '';
+  String(text).split(DRAMA_DQ_RE).forEach(function(part, i) {
+    if (!part) return;
+    if (i % 2) { var sp = document.createElement('span'); sp.className = part.charAt(0) === '*' ? 'cr-act' : 'cr-dq'; sp.textContent = part; el.appendChild(sp); }
+    else el.appendChild(document.createTextNode(part));
+  });
+}
+
+// 渲染一条历史消息（含图片、引用、状态栏）；行元素记住对应的记录（_msg）和附属元素（_extras），方便编辑 / 删除
+function renderHistMsg(m, list, empty) {
+  list = list || getActiveMsgListEl();
+  empty = empty || getActiveEmptyEl();
+  // 以前角色忘了写 </status>，状态原样留在了消息文字里：拿出来放回状态栏
+  if (m.role === 'assistant' && typeof m.content === 'string' && /<status>/i.test(m.content) && typeof takeStatus === 'function') {
+    var st = takeStatus(m.content);
+    m.content = st.text;
+    if (st.status && !m.status) m.status = st.status;
+    if (typeof saveHistories === 'function') setTimeout(saveHistories, 0);
+  }
+  // 和上一条相隔 5 分钟以上（或是这一屏第一条）时，先插一条居中的时间；隔了一个小时以上改成一行「距离上次聊天 多久」
+  if (m.time) {
+    if (!list._lastTime || m.time - list._lastTime >= 5 * 60000) {
+      var sep = document.createElement('div');
+      sep.className = 'cr-time-sep';
+      // 隔了一个小时以上只写这一行，不再写时间（用户要的）
+      if (list._lastTime && m.time - list._lastTime >= 3600000) { sep.classList.add('cr-time-gap'); sep.textContent = '距离上次聊天 ' + durText(m.time - list._lastTime); }
+      else sep.textContent = fmtMsgTime(m.time);
+      list.appendChild(sep);
+    }
+    list._lastTime = m.time;
+  }
+  // 版本切换只留在最新一次回复上：后面来了别的消息，就收起前面的切换条
+  if (list._altTime && !(m.role === 'assistant' && m.time === list._altTime)) {
+    list.querySelectorAll('.cr-alt-switch').forEach(function(el) { el.remove(); });
+    list._altTime = 0;
+  }
+  var thinkBar = m.think && m.role === 'assistant' ? renderThinkBar(m, list) : null;
+  if (m.status && list.id === 'chatMsgList') appChatRoom.classList.add('cr-has-status');   // 第一条状态栏来了，名字旁边的小箭头跟着出来
+  if (m.recalled && !m._flash) return renderRecallNotice(m, list, empty);
+  if (m.pat || m.note) return renderPatNotice(m, list, empty);
+  if (m.whisperChat && typeof renderWhisperNotice === 'function') return renderWhisperNotice(m, list, empty);   // 群里的悄悄话：居中一行，点开看（js/chat/group.js）
+  if (m.narr) return renderNarration(m, list, empty);
+  if (m.action && typeof renderActionCard === 'function') return renderActionCard(m, list, empty);
+  if (m.cal && typeof renderCalCard === 'function') return renderCalCard(m, list, empty);
+  if (m.voice) {
+    var vrow = createVoiceBubble(m, list, empty);
+    if (m.quote) vrow._extras.push(appendQuoteBlock(list, m.quote, 'user'));
+    return vrow;
+  }
+  var role = m.role === 'user' ? 'user' : 'ai';
+  crRowSpeaker = role === 'ai' ? m.speaker || null : null;
+  var r = (m.play && typeof appendPlayMsg === 'function') ? appendPlayMsg(role, m, list, empty)   // 群里的投票 / 抽奖 / 红包（js/chat/group-play.js）
+        : (m.file && typeof appendFileMsg === 'function') ? appendFileMsg(role, m, list, empty)
+        : (m.textImg && !m.imgSrc && typeof appendTextImgMsg === 'function') ? appendTextImgMsg(role, m, list, empty)
+        : m.imgSrc ? appendImgMsg(role, m.imgSrc, list, empty)
+        : (m.sticker && typeof appendStickerMsg === 'function') ? appendStickerMsg(role, m, list, empty)
+        : appendMsg(role, m.content, false, list, empty);
+  crRowSpeaker = null;
+  r.row._msg = m;
+  r.row._extras = thinkBar ? [thinkBar] : [];
+  // 群聊：换了一个人说话时，头像旁边写上名字（js/chat/group.js）
+  if (role === 'ai' && m.speaker) {
+    var prevRow = r.row.previousElementSibling;
+    while (prevRow && !prevRow.classList.contains('chat-msg-row') && !prevRow.classList.contains('cr-time-sep')) prevRow = prevRow.previousElementSibling;
+    if (!(prevRow && prevRow._msg && prevRow._msg.speaker === m.speaker)) {
+      var spk = charList[findCharIdx(m.speaker)];
+      var nameEl = document.createElement('div');
+      nameEl.className = 'cr-speaker';
+      nameEl.textContent = spk ? (typeof groupNick === 'function' ? groupNick(charList[openingChatCharIdx], spk) : groupLabel(spk)) : '';   // 群里显示群昵称
+      list.insertBefore(nameEl, r.row);
+      r.row._extras.push(nameEl);
+    }
+  }
+  if (list.id === 'dramaMsgList') addDramaHead(r.row, r.bubble, m);
+  if (list.id === 'dramaMsgList' && m.recap && typeof dramaRecapLine === 'function') dramaRecapLine(r.bubble, m);   // 这一轮的摘要（开了「显示每轮摘要」才看得到）
+  if (m.quote) r.row._extras.push(appendQuoteBlock(list, m.quote, role));
+  if (m.alts && m.alts.length > 1) { r.row._extras.push(appendAltSwitch(list, m)); list._altTime = m.time || 1; }
+  // 角色刚发就撤回的：先正常显示两秒半，再换成「撤回了一条消息」
+  if (m._flash) {
+    setTimeout(function() {
+      delete m._flash;
+      if (!r.row.parentNode) return;
+      var notice = renderRecallNotice(m, list, null);
+      list.insertBefore(notice, r.row);
+      (r.row._extras || []).concat(r.row._actionNotes || []).forEach(function(el) { el.remove(); });
+      r.row.remove();
+    }, 2500);
+  }
+  return r.row;
+}
+
+// 聊天窗口：双方各自连着发的最后一条下面写一个小时间。中间隔了时间分隔、撤回、拍一拍、操作卡片也算新的一段。
+// 消息列表一有变化就重新摆一遍（只动时间这一行）
+function refreshMsgStamps(list) {
+  var atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  list.querySelectorAll('.cr-msg-stamp').forEach(function(el) { el.remove(); });
+  var prev = null, broken = false;
+  var stamp = function(row) {
+    var m = row._msg;
+    if (!m || !m.time) return;
+    // 放在这条消息自己的引用、版本切换、动作小字后面
+    var owned = (row._extras || []).concat(row._actionNotes || []), at = row;
+    while (at.nextSibling && owned.indexOf(at.nextSibling) >= 0) at = at.nextSibling;
+    var d = new Date(m.time), el = document.createElement('div');
+    el.className = 'cr-msg-stamp ' + (row.classList.contains('user') ? 'user' : 'ai');
+    el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    list.insertBefore(el, at.nextSibling);
+  };
+  Array.prototype.slice.call(list.children).forEach(function(el) {
+    if (el.classList.contains('chat-msg-row')) {
+      if (!el._msg) return;   // 打字中的气泡、报错提示
+      if (prev && (broken || prev.classList.contains('user') !== el.classList.contains('user') || (prev._msg && prev._msg.speaker) !== (el._msg && el._msg.speaker))) stamp(prev);   // 群里换了人也算新的一段
+      prev = el;
+      broken = false;
+    } else if (el.matches('.cr-time-sep, .cr-recall-notice, .cr-action-card, .cr-cal-card')) {
+      broken = true;
+    }
+  });
+  if (prev) stamp(prev);
+  if (atBottom) list.scrollTop = list.scrollHeight;
+}
+(function() {
+  var list = document.getElementById('chatMsgList');
+  var queued = false;
+  var obs = new MutationObserver(function() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function() {
+      queued = false;
+      obs.disconnect();
+      refreshMsgStamps(list);
+      obs.observe(list, { childList: true });
+    });
+  });
+  obs.observe(list, { childList: true });
+})();
+
+// 「重新生成」留下的多个版本：‹ 2/3 › 切换
+function appendAltSwitch(list, m) {
+  var box = document.createElement('div');
+  box.className = 'cr-alt-switch';
+  var prev = document.createElement('button'), next = document.createElement('button');
+  prev.textContent = '‹'; next.textContent = '›';
+  var label = document.createElement('span');
+  label.textContent = (m.altIdx + 1) + '/' + m.alts.length;
+  prev.disabled = m.altIdx <= 0;
+  next.disabled = m.altIdx >= m.alts.length - 1;
+  prev.addEventListener('click', function(e) { e.stopPropagation(); switchAlt(m, -1); });
+  next.addEventListener('click', function(e) { e.stopPropagation(); switchAlt(m, 1); });
+  box.appendChild(prev); box.appendChild(label); box.appendChild(next);
+  list.appendChild(box);
+  return box;
+}
+
+// 最新一次回复的那组消息（同一次回复拆成的多条时间相同）；重新生成 / 切换版本只作用在这一组上
+function trailingReplyGroup(hist) {
+  var i = hist.length, last = hist[i - 1];
+  var userRecalled = function(m) { return m.recalled && m.recalledBy !== 'char'; };
+  if (!last || last.role !== 'assistant' || userRecalled(last) || last.voice || last.imgSrc) return { start: i, msgs: [] };
+  i--;
+  while (i > 0 && last.time && hist[i - 1].role === 'assistant' && !userRecalled(hist[i - 1]) && hist[i - 1].time === last.time) i--;
+  return { start: i, msgs: hist.slice(i) };
+}
+
+function cloneGroup(group) {
+  return group.map(function(g) {
+    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think,
+             recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy,
+             action: g.action ? JSON.parse(JSON.stringify(g.action)) : undefined };
+  });
+}
+
+function switchAlt(m, dir) {
+  var hist = getChatHistory(openingChatCharIdx).indexOf(m) >= 0 ? getChatHistory(openingChatCharIdx) : getDramaHistory(openingChatCharIdx);
+  var g = trailingReplyGroup(hist);
+  if (g.msgs[0] !== m) { showToast('只能切换最新一条回复的版本', 'error'); return; }
+  var to = m.altIdx + dir;
+  if (to < 0 || to >= m.alts.length) return;
+  var group = cloneGroup(m.alts[to]);
+  group[0].alts = m.alts;
+  group[0].altIdx = to;
+  hist.splice(g.start, g.msgs.length);
+  Array.prototype.push.apply(hist, group);
+  saveHistories();
+  renderRoomLists(openingChatCharIdx);
+}
+
+// 拍一拍（聊天窗口，角色设置「聊天」页打开后生效）：双击头像拍一拍，中间出现一行小字；不自动请求回复，按 ❄️ 时角色就知道
+// m.pat：'char' = 你拍了拍角色，'self' = 你拍了拍自己，'user' = 角色拍了拍你；m.patSuffix = 拍的时候用的后缀
+function patNoticeText(m) {
+  var char = charList[openingChatCharIdx] || {}, name = char.charAlias || char.charName || '对方';
+  if (m.pat === 'self') return '你拍了拍自己';
+  if (m.pat === 'user') return '「' + name + '」拍了拍你';
+  return '你拍了拍「' + name + '」' + (m.patSuffix || '');
+}
+function patTextForAI(m) {
+  if (m.pat === 'self') return '（用户拍了拍自己）';
+  if (m.pat === 'user') return '（你拍了拍用户）';
+  return '（用户拍了拍你' + (m.patSuffix || '') + '）';
+}
+function renderPatNotice(m, list, empty) {
+  if (empty) empty.style.display = 'none';
+  var el = document.createElement('div');
+  el.className = 'cr-recall-notice cr-pat-notice';
+  el.textContent = m.note || patNoticeText(m);
+  el._msg = m;
+  el._extras = [];
+  list.appendChild(el);
+  crStick(list);
+  return el;
+}
+// 剧情开场白：居中的旁白块（不是谁说的话），长按和普通消息一样（见 js/chat/opening.js）
+function renderNarration(m, list, empty) {
+  if (empty) empty.style.display = 'none';
+  var row = document.createElement('div');
+  row.className = 'chat-msg-row cr-narr-row';
+  var b = document.createElement('div');
+  b.className = 'chat-msg-bubble cr-narr';
+  b.textContent = fillMacros(m.content || '', charList[openingChatCharIdx]);
+  row.appendChild(b);
+  row._msg = m;
+  row._extras = [];
+  list.appendChild(row);
+  crStick(list);
+  return row;
+}
+// 思维链折叠条：Prompt → 思维链 开了「在聊天里显示思考」才有，放在那次回复的第一条前面，点开看思考全文
+function renderThinkBar(m, list) {
+  if (!mphoneStore.load('mphone_cot_show', false)) return null;
+  var bar = document.createElement('div');
+  bar.className = 'cr-think-bar';
+  var head = document.createElement('div');
+  head.className = 'cr-think-head';
+  head.textContent = '💭 思考';
+  var body = document.createElement('div');
+  body.className = 'cr-think-body';
+  body.textContent = m.think;
+  head.addEventListener('click', function() { bar.classList.toggle('open'); });
+  bar.appendChild(head);
+  bar.appendChild(body);
+  list.appendChild(bar);
+  return bar;
+}
+function patShake(av) {
+  if (!av) return;
+  av.classList.remove('cr-pat-shake');
+  void av.offsetWidth;
+  av.classList.add('cr-pat-shake');
+  if (navigator.vibrate) { try { navigator.vibrate(20); } catch (_) {} }
+}
+// 双击头像：两次点击间隔 350ms 以内
+var patLastTap = { el: null, time: 0 };
+document.getElementById('chatMsgList').addEventListener('click', function(e) {
+  var av = e.target.closest && e.target.closest('.chat-msg-avatar');
+  if (!av) return;
+  var now = Date.now();
+  if (patLastTap.el !== av || now - patLastTap.time > 350) { patLastTap = { el: av, time: now }; return; }
+  patLastTap = { el: null, time: 0 };
+  var char = charList[openingChatCharIdx];
+  var cfg = Object.assign({}, DEFAULT_CHAT_CFG, (char && char.chatCfg) || {});
+  if (!char || !cfg.patOn || char.isGroup) return;   // 群里不拍一拍
+  var row = av.closest('.chat-msg-row');
+  var self = !!(row && row.classList.contains('user'));
+  var m = { role: 'user', content: '', pat: self ? 'self' : 'char', patSuffix: self ? '' : (cfg.patSuffix || ''), time: now };
+  getChatHistory(openingChatCharIdx).push(m);
+  renderHistMsg(m, document.getElementById('chatMsgList'), document.getElementById('chatRoomEmpty'));
+  saveHistories();
+  patShake(av);
+});
+
+// 撤回提示：「你撤回了一条消息 重新编辑」
+// 角色的消息：你撤回的「你撤回了 TA 的一条消息 查看」；TA 自己撤回的「TA 撤回了一条消息 偷看」（角色设置里允许偷看时）
+function renderRecallNotice(m, list, empty) {
+  if (empty) empty.style.display = 'none';
+  var el = document.createElement('div');
+  el.className = 'cr-recall-notice';
+  if (m.role === 'assistant') {
+    var char = charList[openingChatCharIdx] || {}, name = char.charAlias || char.charName || '对方';
+    var byUser = m.recalledBy === 'user';
+    el.appendChild(document.createTextNode(byUser ? '你撤回了「' + name + '」的一条消息' : '「' + name + '」撤回了一条消息'));
+    var cfg = Object.assign({}, DEFAULT_CHAT_CFG, char.chatCfg || {});
+    if (m.recalledText && (byUser || cfg.recallPeek)) {
+      var peek = document.createElement('span');
+      peek.className = 'cr-recall-reedit';
+      peek.textContent = byUser ? '查看' : '偷看';
+      peek.addEventListener('click', function() {
+        var shown = el.querySelector('.cr-recall-peek-text');
+        if (shown) { shown.remove(); return; }
+        var t = document.createElement('span');
+        t.className = 'cr-recall-peek-text';
+        t.textContent = fillMacros(m.recalledText, char);
+        el.appendChild(t);
+      });
+      el.appendChild(peek);
+    }
+    el._msg = m;
+    el._extras = [];
+    list.appendChild(el);
+    crStick(list);
+    return el;
+  }
+  el.appendChild(document.createTextNode('你撤回了一条消息'));
+  if (m.recalledText) {
+    var re = document.createElement('span');
+    re.className = 'cr-recall-reedit';
+    re.textContent = '重新编辑';
+    re.addEventListener('click', function() {
+      crInput.value = m.recalledText;
+      crInput.dispatchEvent(new Event('input'));
+      crInput.focus();
+    });
+    el.appendChild(re);
+  }
+  el._msg = m;
+  el._extras = [];
+  list.appendChild(el);
+  crStick(list);
+  return el;
+}
+
+// 引用块：显示在被发送的消息下方
+function appendQuoteBlock(list, quote, role) {
+  var q = document.createElement('div');
+  q.className = 'cr-quote ' + (role === 'user' ? 'user' : 'ai');
+  q.textContent = quote.author + '：' + fillMacros(quote.text, charList[openingChatCharIdx]);   // 以前存下的引用可能还带着 {{user}}
+  list.appendChild(q);
+  return q;
+}
+
+function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl) {
+  var list  = targetListEl  || getActiveMsgListEl();
+  var empty = targetEmptyEl || getActiveEmptyEl();
+  if (empty) empty.style.display = 'none';
+  var row = document.createElement('div');
+  row.className = 'chat-msg-row ' + (role === 'user' ? 'user' : 'ai');
+  row.appendChild(createMsgAvatar(role));
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-msg-bubble img-bubble';
+  var img = document.createElement('img');
+  img.src = imgSrc;
+  img.alt = '图片消息';
+  bubble.appendChild(img);
+  row.appendChild(bubble);
+  list.appendChild(row);
+  crStick(list);
+  return { row: row, bubble: bubble };
+}

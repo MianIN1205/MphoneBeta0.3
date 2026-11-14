@@ -1,0 +1,331 @@
+/* 眠花糖机 — 聊天室消息：气泡、语音、录音浮窗、引用、撤回提示、时间、版本切换、动作小字、拍一拍 */
+
+/* 引用块（消息下方）与输入栏上方的引用条 */
+.cr-quote {
+  max-width: 62%; margin-top: -6px; padding: 4px 9px; border-radius: 6px;
+  background: rgba(0,0,0,0.05); color: #888; font-size: 11.5px; line-height: 1.45;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cr-quote.user { align-self: flex-end; margin-right: 40px; }
+.cr-quote.ai   { align-self: flex-start; margin-left: 40px; }
+#appChatRoom.cr-no-avatar .cr-quote.user { margin-right: 0; }
+#appChatRoom.cr-no-avatar .cr-quote.ai { margin-left: 0; }
+.cr-quote-bar {
+  display: none; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 6px 14px; background: rgba(255,240,240,0.92);
+  border-top: 1px solid rgba(200,170,170,0.35);
+}
+.cr-quote-bar.open { display: flex; }
+.cr-quote-bar-text {
+  flex: 1; min-width: 0; font-size: 12px; color: #888;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cr-quote-bar-close { border: none; background: none; color: #bbb; font-size: 13px; cursor: pointer; }
+
+/* 撤回提示 */
+.cr-recall-notice { align-self: center; font-size: 11.5px; color: #aaa; padding: 2px 0; }
+.cr-recall-reedit { color: #6a8fc0; margin-left: 6px; cursor: pointer; }
+
+/* =============================================
+   聊天对话室 — 消息气泡
+   ============================================= */
+.chat-msg-list {
+  flex: 1; overflow-y: auto;
+  padding: 12px 14px 8px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.chat-msg-list::-webkit-scrollbar { display: none; }
+/* 列表里的每一样（气泡、引用、撤回提示、卡片…）都不许被挤：消息一多，带 overflow:hidden 的引用条会被压成细细一条 */
+.chat-msg-list > * { flex-shrink: 0; }
+/* 回复失败的那行小字（点开看原因） */
+.cr-err-notice { color: #c47a84; cursor: pointer; }
+
+.chat-msg-row { display: flex; align-items: flex-end; gap: 8px; }
+.chat-msg-row.user { flex-direction: row-reverse; }
+
+.chat-msg-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chat-msg-bubble {
+  max-width: 68%; padding: 9px 13px;
+  border-radius: 18px; font-size: 14px;
+  line-height: 1.55; color: #333;
+  word-break: break-word; white-space: pre-wrap;
+  /* 长按是弹菜单（里面有复制），不要选中文字、不要系统的长按菜单 */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.chat-msg-row.ai .chat-msg-bubble {
+  background: rgba(186,206,222,0.88);
+  border-radius: 18px 18px 18px 4px;
+}
+.chat-msg-row.user .chat-msg-bubble {
+  background: rgba(238,186,202,0.88);
+  border-radius: 18px 18px 4px 18px;
+}
+/* 剧情开场白：居中的旁白，不属于任何一方（js/chat/render.js 的 renderNarration） */
+.chat-msg-row.cr-narr-row { justify-content: center; }
+.chat-msg-row.cr-narr-row .chat-msg-bubble.cr-narr {
+  max-width: 88%; background: rgba(255,255,255,0.62); border-radius: 14px;
+  color: #666; font-size: 13.5px; line-height: 1.75; padding: 12px 16px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+}
+.chat-msg-bubble.error {
+  background: rgba(240,160,160,0.20) !important;
+  color: #c03030; font-size: 12px;
+}
+
+.typing-dots {
+  display: flex; gap: 4px; align-items: center;
+  height: 18px; padding: 0 4px;
+}
+.typing-dots span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(120,100,110,0.45);
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+  0%,80%,100% { transform: translateY(0); }
+  40%         { transform: translateY(-6px); }
+}
+
+.chat-room-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 100%; gap: 8px; opacity: 0.40; pointer-events: none;
+}
+.chat-room-empty svg {
+  width: 38px; height: 38px; stroke: #ccc; stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round; fill: none;
+}
+.chat-room-empty span { font-size: 13px; color: #ccc; letter-spacing: 0.5px; }
+
+/* 录音中状态 */
+.cr-icon-btn.recording {
+  background: rgba(240,80,80,0.20) !important;
+  animation: recordPulse 1s ease-in-out infinite;
+}
+.cr-icon-btn.recording svg { stroke: #e04040 !important; }
+@keyframes recordPulse {
+  0%,100% { box-shadow: 0 0 0 3px rgba(240,80,80,0.28), 0 2px 8px rgba(180,120,120,0.18); }
+  50%      { box-shadow: 0 0 0 7px rgba(240,80,80,0.08), 0 2px 8px rgba(180,120,120,0.18); }
+}
+
+/* 语音气泡内容 */
+.voice-bubble-inner {
+  display: flex; align-items: center; gap: 7px;
+}
+.voice-play-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: none; cursor: pointer; flex-shrink: 0;
+  background: rgba(255,255,255,0.72);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+  transition: transform 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.voice-play-btn:active { transform: scale(0.88); }
+.voice-waveform { flex: 1 1 auto; height: 28px; display: block; min-width: 0; }
+.voice-duration {
+  font-size: 11px; color: rgba(80,60,70,0.72);
+  flex-shrink: 0; white-space: nowrap; letter-spacing: 0.3px;
+  min-width: 28px; text-align: right;
+}
+
+/* 转文字附着区（默认折叠） */
+.voice-transcript-wrap {
+  display: flex; justify-content: flex-end;
+  flex-shrink: 0;   /* 消息列表很长时不被压扁 */
+  padding: 0 14px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+.voice-transcript-wrap.open {
+  max-height: 320px;
+  opacity: 1;
+  padding: 4px 14px 0;
+}
+.voice-transcript {
+  max-width: 72%; min-width: 60px;
+  font-size: 13px; color: #555; line-height: 1.5;
+  background: rgba(255,255,255,0.62);
+  border-radius: 10px; padding: 7px 11px;
+  outline: none;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.07);
+  word-break: break-word; white-space: pre-wrap;
+  cursor: text;
+  -webkit-user-select: text; user-select: text;
+}
+.voice-transcript:focus {
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.07),
+              0 0 0 1.5px rgba(200,128,160,0.38);
+}
+.voice-transcript:empty::before { content: attr(data-placeholder); color: #bbb; }
+
+/* 录音小条：点麦克风后在输入栏上方淡入（js/chat/voice.js）。上面一行时长、波纹、提示；下面录音键在正中间、✕ 在左边（用户要的） */
+.voice-pop {
+  position: absolute; left: 50%; width: min(240px, calc(100% - 20px)); box-sizing: border-box; bottom: calc(100% + 8px); z-index: 6;   /* 居中一小块，不再横跨整条（用户说太空） */
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  padding: 6px 12px 8px; border-radius: 22px;   /* 收紧一点：以前按钮太大、留白太多（用户说太空） */
+  background: rgba(255,248,252,0.96);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.9);
+  box-shadow: 0 6px 24px rgba(120,70,80,0.16), 0 2px 6px rgba(0,0,0,0.06);
+  opacity: 0; transform: translateX(-50%) scale(0.97); transform-origin: center bottom; pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.voice-pop.open { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+.voice-pop button { border: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+.voice-pop svg { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* 时长在正中间，波纹在它右边，提示单独一行（用户说时间要居中） */
+.voice-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; column-gap: 8px; row-gap: 2px; min-height: 24px; }
+#recTimer { grid-column: 2; }
+#recLiveCanvas { grid-column: 3; justify-self: start; }
+.voice-hint { grid-column: 1 / -1; text-align: center; }
+.voice-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.voice-cancel {
+  justify-self: center; width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(224,90,100,0.13); color: #e05a64;
+  visibility: hidden; transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+.voice-cancel svg { width: 15px; height: 15px; }
+.voice-pop.recording .voice-cancel { visibility: visible; }
+.voice-cancel.armed { background: #e05a64; color: #fff; transform: scale(1.12); }
+/* 右边「文」：滑过去松手 = 转成文字发出去（用户要的） */
+.voice-to-text { font-size: 14px; font-weight: 600; background: rgba(120,140,220,0.14); color: #6a7fd0; }
+.voice-to-text.armed { background: #6a7fd0; color: #fff; }
+.voice-cap { font-size: 10.5px; color: #b5a2aa; text-align: center; line-height: 1.4; }
+.voice-cap:empty { display: none; }
+.voice-rec-btn {
+  position: relative; width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(208,88,88,0.12); color: #d05858;
+  box-shadow: 0 3px 10px rgba(208,88,88,0.16);
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  transition: background 0.15s, color 0.15s, transform 0.12s ease, box-shadow 0.15s;
+}
+.voice-rec-btn svg { width: 22px; height: 22px; }
+/* 手感：按下去轻轻一沉；录音时变红，外面一圈淡淡的光往外散 */
+.voice-rec-btn:active, .voice-rec-btn.pressing { transform: scale(0.92); }
+.voice-pop.recording .voice-rec-btn { background: #d05858; color: #fff; box-shadow: 0 4px 14px rgba(208,88,88,0.35); }
+.voice-pop.recording .voice-rec-btn::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(208,88,88,0.35); animation: voiceRing 1.4s ease-out infinite; pointer-events: none; }
+@keyframes voiceRing { from { transform: scale(0.92); opacity: 0.9; } to { transform: scale(1.22); opacity: 0; } }
+#recTimer { display: none; font-size: 14px; font-weight: 600; color: rgba(190,60,90,0.88); font-variant-numeric: tabular-nums; min-width: 32px; }
+#recLiveCanvas { display: none; width: 64px; height: 24px; }
+.voice-pop.recording #recTimer, .voice-pop.recording #recLiveCanvas { display: block; }
+.voice-hint { font-size: 12px; color: #a8909c; white-space: nowrap; }
+.voice-pop.recording .voice-hint { color: #c06070; font-size: 11px; }
+.cr-icon-btn#crMicBtn.active svg { stroke: #d05858; }
+
+/* chat-msg-row 需要 position:relative */
+.chat-msg-row { position: relative; }
+
+/* =============================================
+   聊天室：时间分隔、加载更早、回复多版本切换、停止生成、查看大图
+   ============================================= */
+.cr-time-sep {
+  align-self: center; font-size: 11px; color: #b5a8ad;
+  padding: 2px 8px; margin: 4px 0; flex-shrink: 0;
+}
+/* 双方各自最后一条消息下面的小时间 */
+.cr-msg-stamp { font-size: 10px; color: #b9a8ae; margin-top: -8px; flex-shrink: 0; line-height: 1.4; }
+.cr-msg-stamp.user { align-self: flex-end; margin-right: 44px; }
+.cr-msg-stamp.ai   { align-self: flex-start; margin-left: 44px; }
+#appChatRoom.cr-no-avatar .cr-msg-stamp.user { margin-right: 4px; }
+#appChatRoom.cr-no-avatar .cr-msg-stamp.ai { margin-left: 4px; }
+.cr-load-more { align-self: center; font-size: 11px; color: #c0b0b6; padding: 4px 0; flex-shrink: 0; }
+.cr-alt-switch {
+  align-self: flex-start; margin: -6px 0 0 40px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 2px; font-size: 11px; color: #a08890;
+}
+#appChatRoom.cr-no-avatar .cr-alt-switch { margin-left: 0; }
+.cr-alt-switch button {
+  border: none; background: rgba(255,255,255,0.7); color: #a08890; width: 22px; height: 20px;
+  border-radius: 10px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0;
+}
+.cr-alt-switch button:disabled { opacity: 0.35; cursor: default; }
+.cr-emoji-btn.generating { font-size: 15px; }
+
+.img-viewer {
+  position: absolute; inset: 0; z-index: 9500; display: none;
+  background: rgba(0,0,0,0.92); overflow: hidden; touch-action: none;
+  align-items: center; justify-content: center;
+}
+.img-viewer.open { display: flex; }
+.img-viewer img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  transform-origin: center center; user-select: none; -webkit-user-drag: none;
+}
+/* 大图长按能用手机自带的菜单（iPhone「添加到照片」、安卓「下载图片」） */
+.phone .img-viewer img { -webkit-touch-callout: default; }
+.img-viewer-bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; gap: 12px;
+  padding: 12px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0,0,0,0.5), rgba(0,0,0,0));
+}
+.img-viewer-bar button {
+  border: 1px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.12); color: #fff;
+  border-radius: 16px; padding: 6px 16px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.chat-msg-bubble.img-bubble img, .feed-post-imgs img, .fav-item-imgs img { cursor: zoom-in; }
+
+/* 聊天窗口里的动作描写（*星号* 包住的）：放在气泡外，灰色斜体小字，贴着气泡 */
+.cr-action-note {
+  align-self: flex-start; margin-left: 40px; max-width: 68%;
+  font-size: 12px; line-height: 1.5; color: #9a9a9a; font-style: italic;
+  padding: 0 4px; white-space: pre-wrap; word-break: break-word;
+}
+.cr-action-note.before { margin-bottom: -6px; }
+.cr-action-note.after  { margin-top: -6px; }
+#appChatRoom.cr-no-avatar .cr-action-note { margin-left: 0; }
+/* 只有动作、没有说话的一条：不显示气泡底色和头像 */
+.chat-msg-bubble.cr-action-only {
+  background: none !important; box-shadow: none !important; border: none !important;
+  padding: 0 4px; font-size: 12px; color: #9a9a9a; font-style: italic;
+}
+.chat-msg-row:has(.cr-action-only) .chat-msg-avatar { visibility: hidden; height: 0; }
+
+/* 拍一拍：被拍的头像轻轻晃一下 */
+@keyframes crPatShake {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-9deg); }
+  60% { transform: rotate(7deg); }
+}
+.chat-msg-avatar.cr-pat-shake { animation: crPatShake 0.36s ease; }
+.cr-pat-notice { color: #a89aa0; }
+/* 思维链折叠条（js/chat/render.js 的 renderThinkBar）：很小、灰色，点开看思考 */
+.cr-think-bar { align-self: flex-start; max-width: 80%; margin: 2px 0 -2px 48px; flex-shrink: 0; }
+.cr-think-head { display: inline-block; font-size: 11px; color: #a89aa0; padding: 2px 8px; border-radius: 9px; background: rgba(0,0,0,0.035); cursor: pointer; }
+.cr-think-head::after { content: ' ▸'; }
+.cr-think-bar.open .cr-think-head::after { content: ' ▾'; }
+.cr-think-body { display: none; margin-top: 4px; font-size: 11.5px; color: #8a7f84; line-height: 1.6; white-space: pre-wrap; padding: 6px 10px; border-radius: 10px; background: rgba(0,0,0,0.035); }
+.cr-think-bar.open .cr-think-body { display: block; }
+
+/* 聊天窗口边生成边出的气泡（js/chat/reply.js 的 previewStream）：淡入 + 轻微放大 */
+.cr-stream-preview { animation: crStreamIn .22s ease-out; }
+@keyframes crStreamIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+
+/* 带 HTML 的消息：内容在 Shadow DOM 里（js/chat/render.js 的 setBubbleHtml） */
+.chat-msg-bubble.cr-html-bubble { white-space: normal; }
+.cr-html-box { max-width: 100%; overflow-x: auto; }
+
+/* 剧情窗口每条的「名字 + 时间」：只有文本框、自定义格式显示（js/chat/room.js 的 dramaBoxCss） */
+.cr-msg-head { display: none; }
+/* 隔了一个小时以上：这一行写「距离上次聊天 多久」（.cr-time-sep.cr-time-gap），不写时间 */
+/* 往上翻着看的时候来了新消息：底部「↓ N 条新消息」，点了跳到最下面（js/chat/render.js 的 crStick / crPill） */
+.cr-new-pill { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%) translateY(6px); z-index: 20; opacity: 0; pointer-events: none;
+  border: none; border-radius: 16px; padding: 6px 14px; font-family: inherit; font-size: 12.5px; color: #c0607a; background: rgba(255,255,255,0.94);
+  box-shadow: 0 3px 12px rgba(150,100,120,0.2); transition: opacity 0.2s, transform 0.2s; cursor: pointer; }
+.cr-new-pill.show { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
+
+/* 自然的小提示（用户要的，不加红点、不弹字）：按住气泡慢慢往下沉一点；有状态栏时名字右边一个朝下的小三角；悄悄话提示后面也是（用户要朝下的，不要 v 字形） */
+.chat-msg-bubble { transition: transform 0.35s ease; }
+.chat-msg-bubble.cr-pressing { transform: scale(0.96); }
+#appChatRoom.cr-has-status .chat-room-main-title::after, .cr-whisper-notice::after {
+  content: ''; display: inline-block; width: 0; height: 0; margin-left: 5px; vertical-align: 2px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.5; }
