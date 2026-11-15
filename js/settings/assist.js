@@ -86,9 +86,9 @@ function notifyFeedActivity(char, post, text, comment) {
     return;
   }
   if (!notifyReady()) return;
-  var tb = notifyTitleBody(char.charAlias || char.charName || '动态', text);
+  var tb = notifyTitleBody(char.charAlias || char.charName || '角色', text);
   var tag = 'feed-' + post.id + '-' + (target.commentId || char.id);
-  showSystemNotification(tb[0], tb[1], { icon: notifyIcon(char), tag: tag, renotify: true, data: target });
+  showSystemNotification(tb[0] + ' · 动态', tb[1], { icon: notifyIcon(char), tag: tag, renotify: true, data: target });
 }
 
 // 小手机里的消息横幅：在小手机里、但没在看这个对话时收到消息，从顶部弹出（头像、名字、内容），点一下进对话，4 秒后收起
@@ -108,6 +108,7 @@ function showInAppNotice(char, added, target) {
   if (round && inappDismissed[char.id] === round) return;
   inappNotice._round = round;
   inappNotice._target = target || { open: 'chat', charId: char.id };
+  inappNotice.querySelector('.inapp-kind').hidden = inappNotice._target.open !== 'feed';
   paintCharAvatar(inappNotice.querySelector('.inapp-av'), char);
   inappNotice.querySelector('.inapp-name').textContent = char.charAlias || char.charName || '新消息';
   var last = added[added.length - 1];
