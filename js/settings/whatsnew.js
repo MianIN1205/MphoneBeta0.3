@@ -60,11 +60,11 @@ function wnCheck(tries) {
   wnSet('mphoneSeenV', String(cur));
   if (!seen) {
     var lines = WN_INTRO.concat(fresh.length ? ['', '最近更新：'].concat(wnTimeline(fresh)) : []);
-    wnShow('欢迎来到眠花糖机', lines, '知道了', '不再弹出', function() { wnSetEnabled(false); });
+    wnShow('欢迎来到眠花糖机', lines, '确认', '拒收', function() { wnSetEnabled(false); });
     return;
   }
   if (!fresh.length || wnGet('mphoneNoteOff')) return;
-  wnShow('小手机更新了', wnTimeline(fresh), '知道了', '不再弹出', function() { wnSetEnabled(false); showToast('之后不会再弹了，设置 → 辅助功能里能再打开', 'plain'); });
+  wnShow('小手机更新了', wnTimeline(fresh), '确认', '拒收', function() { wnSetEnabled(false); showToast('之后不会再弹了，设置 → 辅助功能里能再打开', 'plain'); });
 }
 onMphoneReady(function() { setTimeout(wnCheck, 2500); });
 
@@ -76,7 +76,7 @@ onMphoneReady(function() { setTimeout(wnCheck, 2500); });
     t.addEventListener('change', function() { wnSetEnabled(this.checked); });
   }
   if (b) b.addEventListener('click', function() {
-    wnShow('眠花糖机', WN_INTRO.concat(WN_NOTES.length ? ['', '最近更新：'].concat(wnTimeline(WN_NOTES)) : []), '知道了', '关闭');
+    wnShow('眠花糖机', WN_INTRO.concat(WN_NOTES.length ? ['', '最近更新：'].concat(wnTimeline(WN_NOTES)) : []), '确认', '关闭');
   });
 })();
 
