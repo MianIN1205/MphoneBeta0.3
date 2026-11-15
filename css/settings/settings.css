@@ -422,33 +422,65 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
 .api-preset-card .field-label, .api-config-card .field-label { display: block; }
 .api-preset-picker {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) repeat(4, 38px);
+  gap: 4px;
   align-items: stretch;
 }
-.api-preset-picker .field-input { min-width: 0; min-height: 42px; padding-inline: 9px 5px; }
-.api-preset-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  margin-top: 7px;
-}
-.api-preset-actions button {
+.api-preset-picker .field-input {
   min-width: 0;
-  min-height: 38px;
-  padding: 5px 3px;
+  min-height: 42px;
+  padding-inline: 8px 3px;
+  text-overflow: ellipsis;
+}
+.api-preset-icon, .api-preset-drawer button {
+  min-height: 42px;
+  padding: 5px;
   border: 1px solid rgba(142, 96, 116, 0.12);
   border-radius: 9px;
   background: #fff9fb;
-  color: #6f505f;
-  line-height: 1.2;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
+  color: #775a68;
+  font: inherit;
   cursor: pointer;
 }
-.api-preset-actions #apiPresetDelete { color: #a1565c; }
-.api-preset-card button:disabled { opacity: 0.5; cursor: default; }
+.api-preset-icon {
+  display: grid;
+  place-items: center;
+}
+.api-preset-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+#apiPresetApply { color: #327358; }
+#apiPresetDelete { color: #b84e58; }
+.api-preset-icon[aria-expanded="true"] {
+  background: #f9edf3;
+  border-color: #d6adbf;
+}
+.api-preset-icon:focus-visible, .api-preset-drawer button:focus-visible {
+  outline: 2px solid #b86e88;
+  outline-offset: 1px;
+}
+.api-preset-card button:disabled { opacity: 0.45; cursor: default; }
+.api-preset-drawer {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  margin-top: 7px;
+  padding-top: 7px;
+}
+.api-preset-drawer[hidden] { display: none; }
+#apiPresetSaveDrawer { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#apiPresetNameForm { grid-template-columns: minmax(0, 1fr) auto auto; }
+.api-preset-drawer .field-input { min-width: 0; }
+.api-preset-drawer button { padding-inline: 10px; font-size: 12px; font-weight: 600; }
+.api-preset-name-error { grid-column: 1 / -1; }
+.api-preset-name-error:empty { display: none; }
 .api-preset-info:empty { display: none; }
 .api-preset-info, .api-connection-status { overflow-wrap: anywhere; }
 .api-config-actions {
@@ -460,7 +492,6 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
   padding-top: 9px;
   margin-top: 4px;
 }
-#settingsScreen .api-preset-picker .action-btn,
 #settingsScreen .api-config-actions .action-btn {
   flex: none;
   min-height: 42px;
