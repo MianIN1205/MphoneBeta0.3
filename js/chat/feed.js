@@ -265,33 +265,43 @@ function renderFeedComment(post, comment, me) {
   var row = document.createElement('div');
   row.className = 'feed-comment';
   if (comment.id) row.dataset.commentId = comment.id;
-  var head = document.createElement('div');
+  var avatar = document.createElement('span');
+  avatar.className = 'feed-comment-avatar';
+  avatar.setAttribute('aria-hidden', 'true');
+  if (comment.author.avatar) avatar.style.backgroundImage = 'url(' + comment.author.avatar + ')';
+  else avatar.textContent = Array.from(String(comment.author.name || '').trim())[0] || '·';
+
+  var content = document.createElement('div');
+  var head = document.createElement('div'), who = document.createElement('b');
   head.className = 'feed-comment-head';
-  var names = document.createElement('span'), who = document.createElement('b');
   who.textContent = comment.author.name;
-  names.appendChild(who);
+  head.appendChild(who);
   if (comment.replyTo) {
-    var to = document.createElement('b');
-    to.textContent = comment.replyTo.name;
-    names.append(' 回复 ', to);
+    var to = document.createElement('span');
+    to.className = 'feed-comment-to';
+    to.textContent = ' 回复 ' + comment.replyTo.name;
+    head.appendChild(to);
   }
-  head.appendChild(names);
-  var time = feedCommentTime(comment.time);
-  if (time) head.appendChild(time);
+
   var body = document.createElement('div');
   body.className = 'feed-comment-body';
   body.textContent = comment.text;
-  row.append(head, body);
+  var meta = document.createElement('div');
+  meta.className = 'feed-comment-meta';
+  var time = feedCommentTime(comment.time);
+  if (time) meta.appendChild(time);
   if (!sameAuthor(comment.author, me)) {
     var reply = document.createElement('button');
     reply.className = 'feed-comment-reply';
     reply.type = 'button';
     reply.textContent = '回复';
     reply.setAttribute('aria-label', '回复 ' + comment.author.name);
-    head.appendChild(reply);
+    meta.appendChild(reply);
     row.classList.add('can-reply');
     row.addEventListener('click', function() { openFeedComment(post, comment); });
   }
+  content.append(head, body, meta);
+  row.append(avatar, content);
   return row;
 }
 
