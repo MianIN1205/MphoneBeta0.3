@@ -273,14 +273,16 @@ function renderFeedComment(post, comment, me) {
 
   var content = document.createElement('div');
   var head = document.createElement('div'), who = document.createElement('b');
+  var names = document.createElement('span');
   head.className = 'feed-comment-head';
+  names.className = 'feed-comment-names';
   who.textContent = comment.author.name;
-  head.appendChild(who);
+  names.appendChild(who);
   if (comment.replyTo) {
     var to = document.createElement('span');
     to.className = 'feed-comment-to';
     to.textContent = ' 回复 ' + comment.replyTo.name;
-    head.appendChild(to);
+    names.appendChild(to);
   }
 
   var body = document.createElement('div');
@@ -300,7 +302,8 @@ function renderFeedComment(post, comment, me) {
     row.classList.add('can-reply');
     row.addEventListener('click', function() { openFeedComment(post, comment); });
   }
-  content.append(head, body, meta);
+  head.append(names, meta);
+  content.append(head, body);
   row.append(avatar, content);
   return row;
 }
