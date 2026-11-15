@@ -46,6 +46,7 @@ function renderMoments() {
 var momentCur = null, momentPostId = '';
 function openMoment(c) {
   momentCur = c;
+  var seen = momentSeen[c.id] || 0;
   var box = document.getElementById('momentCard');
   if (typeof paintCharAvatar === 'function') paintCharAvatar(box.querySelector('.moment-card-av'), c);
   box.querySelector('.moment-card-name').textContent = c.charAlias || c.charName || '未命名';
@@ -56,6 +57,11 @@ function openMoment(c) {
   var post = momentLatestPost(c), pb = box.querySelector('.moment-card-post');
   momentPostId = post ? post.id : '';
   pb.style.display = post ? '' : 'none';
+  var postIsNew = !!post && post.time > seen;
+  box.querySelector('[data-moment-update="bio"]').hidden = !(c.charBioAt > seen);
+  box.querySelector('[data-moment-update="status"]').hidden = !(c.headStatusAt > seen);
+  box.querySelector('[data-moment-update="post"]').hidden = !postIsNew;
+  pb.setAttribute('aria-label', postIsNew ? '查看新动态' : '查看这条动态');
   if (post) {
     pb.querySelector('.moment-card-post-text').textContent = post.text || ((post.textImgs || [])[0] ? '[图片] ' + post.textImgs[0] : '[图片]');
     pb.querySelector('.moment-card-post-when').textContent = fmtAgo(post.time);
