@@ -46,11 +46,5 @@ function getActiveEmptyEl() {
 // 传入角色且它在便捷拓展栏选了模型预设时，用那套预设（见 js/chat/quick-bar.js）
 function getApiCfg(char) {
   var p = (char && typeof charApiPreset === 'function') ? charApiPreset(char) : null;
-  if (p) return { url: p.url || '', key: p.key || '', model: p.model || '', temp: isNaN(parseFloat(p.temp)) ? 0.8 : parseFloat(p.temp) };
-  return {
-    url:   (document.getElementById('apiUrl').value.trim()  || mphoneStore.load('mphone_api_url', null)     || ''),
-    key:   (document.getElementById('apiKey').value.trim()  || mphoneStore.load('mphone_api_key', null)     || ''),
-    model: (modelDisplay.textContent.trim() === '请选择模型' ? '' : modelDisplay.textContent.trim()),
-    temp:  parseFloat(tempSlider.value || mphoneStore.load('mphone_temperature', null) || '0.8')
-  };
+  return p ? presetApiConfig(p) : readAppliedApiConfig();
 }

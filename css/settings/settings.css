@@ -130,12 +130,13 @@
   display: flex; align-items: center; gap: 8px;
 }
 
-.model-select-box {
-  flex: 1; display: flex; align-items: center;
+.model-select-box { flex: 1; min-width: 0; position: relative; }
+.model-select-trigger {
+  display: flex; align-items: center; width: 100%;
   background: rgba(0,0,0,0.045);
-  border-radius: 10px;
+  border: 0; border-radius: 10px;
   padding: 9px 10px 9px 12px;
-  cursor: pointer; position: relative;
+  font: inherit; text-align: left; cursor: pointer;
 }
 
 .model-select-name {
@@ -174,7 +175,9 @@
 .model-popup.open { display: block; }
 
 .model-popup-item {
-  padding: 12px 16px;
+  display: block; width: 100%; min-height: 44px;
+  padding: 9px 12px; border: 0; background: transparent;
+  font-family: inherit; text-align: left; overflow-wrap: anywhere;
   font-size: 14px; color: #444;
   border-bottom: 1px solid rgba(0,0,0,0.04);
   cursor: pointer;
@@ -211,69 +214,73 @@
   to   { transform: rotate(360deg); }
 }
 
-/* 温度区域 */
+/* 温度一行显示；留足滑条可触摸的高度。 */
 .temp-section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(0,0,0,0.06);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
 }
 
-.temp-header {
-  display: flex; justify-content: space-between;
-  align-items: center; margin-bottom: 10px;
-}
-
-.temp-label { font-size: 12px; font-weight: 500; color: #999; }
-
+.temp-label { font-size: 12px; font-weight: 500; color: #807a7d; }
 .temp-value-display {
-  font-size: 12px; font-weight: 700;
-  color: #D05858; min-width: 36px; text-align: right;
+  min-width: 2.8em;
+  color: #ac484f;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
-
 .slider-wrapper {
-  position: relative; height: 28px;
-  display: flex; align-items: center;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
-
 .temp-slider {
-  -webkit-appearance: none; appearance: none;
-  width: 100%; height: 6px; border-radius: 3px;
-  background: linear-gradient(to right, #ffffff, #F08080);
-  outline: none; cursor: pointer;
-  border: 1px solid rgba(240,128,128,0.25);
-  box-shadow: 0 1px 4px rgba(240,128,128,0.18);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
 }
-
+.temp-slider::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #f7e7e9, #f08080);
+}
+.temp-slider::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #f7e7e9, #f08080);
+}
 .temp-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 2px; height: 2px;
-  background: transparent; border: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6.5px;
+  background: transparent;
+  border: 0;
 }
-
 .temp-slider::-moz-range-thumb {
-  width: 2px; height: 2px;
-  background: transparent; border: none;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: 0;
 }
-
 .slider-thumb-emoji {
-  position: absolute; font-size: 20px; line-height: 1;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(-50%);
+  position: absolute;
   top: 50%;
-  filter: drop-shadow(0 1px 3px rgba(180,60,60,0.25));
-  transition: left 0.04s linear;
-}
-
-.temp-range-labels {
-  display: flex; justify-content: space-between;
-  font-size: 11px; color: #bbb; margin-top: 5px;
+  font-size: 17px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 /* 操作按钮 */
-.action-btn-row {
-  display: flex; gap: 10px; padding: 4px 0 2px;
-}
-
 .action-btn {
   padding: 14px 0;
   border: none; border-radius: 16px;
@@ -411,56 +418,58 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
 .modal-btn-cancel { background: #F0F0F0; color: #666; }
 .modal-btn-confirm { background: #FFE4E1; color: #B04040; }
 
-/* 预设卡片 */
-.preset-card {
-  background: rgba(255,255,255,0.92);
-  border-radius: 18px; overflow: hidden;
-  box-shadow: 0 2px 14px rgba(0,0,0,0.06);
-  margin-bottom: 14px;
+/* 连接预设和主 API 表单 */
+.api-preset-card .field-label, .api-config-card .field-label { display: block; }
+.api-preset-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
 }
-
-.preset-card-header {
-  display: flex; align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px; cursor: pointer; user-select: none;
-  background: rgba(255,255,255,0.92);
-  border-radius: 18px; transition: background 0.15s;
+.api-preset-picker .field-input { min-width: 0; min-height: 42px; padding-inline: 9px 5px; }
+.api-preset-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
 }
-
-.preset-card-header.open { border-radius: 18px 18px 0 0; }
-
-.preset-card-title { font-size: 15px; font-weight: 600; color: #222; }
-
-.preset-chevron {
-  width: 18px; height: 18px;
-  stroke: #aaa; stroke-width: 2;
-  stroke-linecap: round; stroke-linejoin: round; fill: none;
-  transition: transform 0.25s ease; flex-shrink: 0;
-}
-
-.preset-card-header.open .preset-chevron { transform: rotate(180deg); }
-
-.preset-list {
-  overflow: hidden; max-height: 0;
-  transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-
-.preset-list.open { max-height: 300px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }   /* 存了很多时能往下滑（以前滑不动，用户反馈过） */
-
-.preset-item {
-  padding: 12px 16px;
-  border-top: 1px solid rgba(0,0,0,0.045);
+.api-preset-actions button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 3px;
+  border: 1px solid rgba(142, 96, 116, 0.12);
+  border-radius: 9px;
+  background: #fff9fb;
+  color: #6f505f;
+  line-height: 1.2;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  background: rgba(255,255,255,0.92);
 }
-
-.preset-item:last-child { border-radius: 0 0 18px 18px; }
-
-.preset-item:active,
-.preset-item.selected {
-  background: rgba(240,128,128,0.08); color: #D05858;
+.api-preset-actions #apiPresetDelete { color: #a1565c; }
+.api-preset-card button:disabled { opacity: 0.5; cursor: default; }
+.api-preset-info:empty { display: none; }
+.api-preset-info, .api-connection-status { overflow-wrap: anywhere; }
+.api-config-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  padding-top: 9px;
+  margin-top: 4px;
 }
+#settingsScreen .api-preset-picker .action-btn,
+#settingsScreen .api-config-actions .action-btn {
+  flex: none;
+  min-height: 42px;
+  padding-inline: 12px;
+}
+#settingsScreen .api-connection-status { margin: 0; }
+#settingsScreen .api-preset-card { margin-bottom: 10px; }
+.assist-row-divider { border-top: 1px solid rgba(0,0,0,0.06); margin-top: 4px; }
+.assist-options .auto-row { min-height: 37px; }
 
 /* 备份：上次备份时间、云端备份的令牌 / 密码输入框 */
 .backup-last { font-size: 12px; color: #8a7a80; }
@@ -639,7 +648,6 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
 }
 .setting-help[open] > summary + .auto-row { margin-top: 4px; }
 
-#settingsScreen .preset-card { margin-bottom: 8px; }
 #settingsScreen .data-donut-wrap { width: 74px; height: 74px; }
 #settingsScreen .data-action { min-height: 42px; }
 #settingsScreen .data-quota { color: #807a7d; }

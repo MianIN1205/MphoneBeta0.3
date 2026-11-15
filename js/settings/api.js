@@ -7,23 +7,13 @@ const backBtn        = document.getElementById('backBtn');
 
 dockSettings.addEventListener('click', function() {
   settingsScreen.classList.add('active');
-  // url/key 有值时自动刷新模型列表（会恢复上次选中的模型）；无值时清空
-  var _url = document.getElementById('apiUrl').value.trim() || mphoneStore.load('mphone_api_url', null) || '';
-  var _key = document.getElementById('apiKey').value.trim() || mphoneStore.load('mphone_api_key', null) || '';
-  if (_url && _key) {
-    setTimeout(function() { refreshBtn.click(); }, 60);
-  } else {
-    modelPopup.innerHTML = '';
-    modelDisplay.textContent = '请选择模型';
-    modelPopup.classList.remove('open');
-    modelChevron.classList.remove('open');
+  if (apiUrlInput.value.trim() && apiKey.value.trim()) {
+    refreshBtn.click();
   }
-  requestAnimationFrame(function() { requestAnimationFrame(updateSliderThumb); });
 });
 backBtn.addEventListener('click', function() {
   settingsScreen.classList.remove('active');
-  modelPopup.classList.remove('open');
-  modelChevron.classList.remove('open');
+  setApiModelPopup(false);
 });
 
 // 设置界面 — 顶栏下方固定横向菜单切换（主API / 语音API / 生图API / 辅助功能）
@@ -37,15 +27,14 @@ document.querySelectorAll('#settingsSubnav .settings-subnav-item').forEach(funct
     document.querySelectorAll('#settingsScreen .settings-subpanel').forEach(function(panel) {
       panel.classList.toggle('active', panel.dataset.spanel === stab);
     });
-    if (stab === 'main-api') {
-      requestAnimationFrame(function() { requestAnimationFrame(updateSliderThumb); });
-    }
+    settingsScreen.querySelector('.settings-content').scrollTop = 0;
   });
 });
 
 // 眼睛图标切换
 const eyeBtn  = document.getElementById('eyeBtn');
 const apiKey  = document.getElementById('apiKey');
+const apiUrlInput = document.getElementById('apiUrl');
 const eyeIcon = document.getElementById('eyeIcon');
 
 eyeBtn.addEventListener('click', function() {
@@ -57,133 +46,222 @@ eyeBtn.addEventListener('click', function() {
     : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
 });
 
-// url/key 实时联动：任意一个清空则立刻清空模型列表
-function syncModelState() {
-  var _url = document.getElementById('apiUrl').value.trim();
-  var _key = document.getElementById('apiKey').value.trim();
-  if (!_url || !_key) {
-    modelPopup.innerHTML = '';
-    modelDisplay.textContent = '请选择模型';
-    modelPopup.classList.remove('open');
-    modelChevron.classList.remove('open');
-  }
-}
-document.getElementById('apiUrl').addEventListener('input', syncModelState);
-document.getElementById('apiKey').addEventListener('input', syncModelState);
-
-// 刷新按钮
 const refreshBtn = document.getElementById('refreshBtn');
+var apiModelRequest = 0;
+
+function resetApiModelList() {
+  apiModelRequest++;
+  refreshBtn.classList.remove('spinning');
+  modelPopup.replaceChildren();
+  setApiModelPopup(false);
+}
+
+function onApiConnectionEdit() {
+  resetApiModelList();
+  setDraftApiModel('');
+}
+apiUrlInput.addEventListener('input', onApiConnectionEdit);
+apiKey.addEventListener('input', onApiConnectionEdit);
 
 // 模型弹窗
-const modelSelectBox = document.getElementById('modelSelectBox');
+const modelSelectBtn = document.getElementById('modelSelectBtn');
 const modelPopup     = document.getElementById('modelPopup');
 const modelDisplay   = document.getElementById('modelDisplay');
 const modelChevron   = document.getElementById('modelChevron');
 
-modelSelectBox.addEventListener('click', function(e) {
-  e.stopPropagation();
-  const isOpen = modelPopup.classList.toggle('open');
-  modelChevron.classList.toggle('open', isOpen);
+function setApiModelPopup(open) {
+  modelPopup.classList.toggle('open', open);
+  modelChevron.classList.toggle('open', open);
+  modelSelectBtn.setAttribute('aria-expanded', String(open));
+}
+modelSelectBtn.addEventListener('click', function(event) {
+  event.stopPropagation();
+  if (modelPopup.children.length) setApiModelPopup(!modelPopup.classList.contains('open'));
+  else refreshApiModels(true);
+});
+modelSelectBtn.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') setApiModelPopup(false);
 });
 
-document.querySelectorAll('.model-popup-item').forEach(function(item) {
-  item.addEventListener('click', function(e) {
-    e.stopPropagation();
-    document.querySelectorAll('.model-popup-item').forEach(function(i) {
-      i.classList.remove('selected');
-    });
-    item.classList.add('selected');
-    modelDisplay.textContent = item.dataset.model;
-    modelPopup.classList.remove('open');
-    modelChevron.classList.remove('open');
+function setDraftApiModel(model) {
+  modelDisplay.textContent = model || '请选择模型';
+  modelPopup.querySelectorAll('.model-popup-item').forEach(function(item) {
+    item.classList.toggle('selected', item.dataset.model === model);
   });
-});
+  renderApiConnectionStatus();
+}
 
 document.addEventListener('click', function() {
-  modelPopup.classList.remove('open');
-  modelChevron.classList.remove('open');
+  setApiModelPopup(false);
 });
 
-// 存为预设弹窗
-const btnSavePreset   = document.getElementById('btnSavePreset');
+// API、字体、钱包和世界书共用命名弹窗。
 const presetModal     = document.getElementById('presetModal');
 const modalCancel     = document.getElementById('modalCancel');
 const modalConfirm    = document.getElementById('modalConfirm');
 const presetNameInput = document.getElementById('presetNameInput');
-
-// 存为预设弹窗共用：'api' = API 预设，'font' = 字体预设
-var presetModalMode = 'api';
-var apiPresets  = mphoneStore.load('mphone_api_presets', []);
+var presetModalMode = '';
+var apiPresetNameAction = null;
+var apiPresets = mphoneStore.load('mphone_api_presets', []);
+if (!Array.isArray(apiPresets)) apiPresets = [];
 var fontPresets = mphoneStore.load('mphone_font_presets', []);
 
-btnSavePreset.addEventListener('click', function(e) {
-  e.stopPropagation();
+const apiPresetSelect = document.getElementById('apiPresetSelect');
+const apiPresetApply = document.getElementById('apiPresetApply');
+const apiPresetUpdate = document.getElementById('apiPresetUpdate');
+const apiPresetRename = document.getElementById('apiPresetRename');
+const apiPresetDelete = document.getElementById('apiPresetDelete');
+const apiPresetInfo = document.getElementById('apiPresetInfo');
+const apiConnectionStatus = document.getElementById('apiConnectionStatus');
+
+function apiConfig(url, key, model, temp) {
+  var degrees = parseFloat(temp);
+  return { url: url || '', key: key || '', model: model || '', temp: Number.isFinite(degrees) ? degrees : 0.8 };
+}
+function readDraftApiConfig() {
+  var model = modelDisplay.textContent.trim();
+  return apiConfig(apiUrlInput.value.trim(), apiKey.value.trim(), model === '请选择模型' ? '' : model, tempSlider.value);
+}
+function readAppliedApiConfig() {
+  return apiConfig(mphoneStore.load('mphone_api_url', ''), mphoneStore.load('mphone_api_key', ''),
+    mphoneStore.load('mphone_model', ''), mphoneStore.load('mphone_temperature', '0.80'));
+}
+function sameApiConfig(a, b) {
+  return a.url === b.url && a.key === b.key && a.model === b.model && a.temp === b.temp;
+}
+function presetApiConfig(preset) {
+  return apiConfig(preset.url, preset.key, preset.model, preset.temp);
+}
+
+function renderApiConnectionStatus() {
+  var applied = readAppliedApiConfig();
+  var dirty = !sameApiConfig(applied, readDraftApiConfig());
+  var status = dirty ? '有修改待应用' : applied.model ? '当前模型：' + applied.model : '未选择模型';
+  if (apiConnectionStatus.textContent !== status) apiConnectionStatus.textContent = status;
+}
+
+function apiPresetIndex() {
+  return apiPresetSelect.value === '' ? -1 : Number(apiPresetSelect.value);
+}
+function renderApiPresetActions() {
+  var preset = apiPresets[apiPresetIndex()];
+  [apiPresetApply, apiPresetUpdate, apiPresetRename, apiPresetDelete].forEach(function(button) {
+    button.disabled = !preset;
+  });
+  apiPresetInfo.textContent = preset
+    ? (preset.model || '未选择模型') + ' · 温度 ' + presetApiConfig(preset).temp.toFixed(2)
+    : '';
+}
+function renderApiPresets(index) {
+  var selected = index === undefined ? apiPresetIndex() : index;
+  apiPresetSelect.replaceChildren(new Option('选择已保存的预设', ''));
+  apiPresets.forEach(function(preset, i) {
+    if (preset && typeof preset.name === 'string') apiPresetSelect.add(new Option(preset.name, String(i)));
+  });
+  if (apiPresets[selected]) apiPresetSelect.value = String(selected);
+  renderApiPresetActions();
+}
+function saveApiPresets(index) {
+  mphoneStore.save('mphone_api_presets', apiPresets);
+  renderApiPresets(index);
+}
+
+function setDraftApiConfig(cfg) {
+  resetApiModelList();
+  apiUrlInput.value = cfg.url;
+  apiKey.value = cfg.key;
+  tempSlider.value = cfg.temp;
+  setDraftApiModel(cfg.model);
+  updateSliderThumb();
+}
+function applyApiConfig(cfg) {
+  mphoneStore.save('mphone_api_url', cfg.url);
+  mphoneStore.save('mphone_api_key', cfg.key);
+  mphoneStore.save('mphone_temperature', cfg.temp.toFixed(2));
+  if (cfg.model) mphoneStore.save('mphone_model', cfg.model);
+  else mphoneStore.remove('mphone_model');
+  renderApiConnectionStatus();
+  showToast('✓ 主 API 配置已应用', 'success');
+}
+function openApiPresetName(title, name, onName) {
   presetModalMode = 'api';
-  document.querySelector('#presetModal .modal-title').textContent = '备注名称';
-  presetNameInput.value = '';
+  apiPresetNameAction = onName;
+  document.querySelector('#presetModal .modal-title').textContent = title;
+  presetNameInput.value = name;
   presetModal.classList.add('open');
+  presetNameInput.focus();
+}
+function isApiPresetNameAvailable(name, index) {
+  if (!apiPresets.some(function(preset, i) { return i !== index && preset && preset.name === name; })) return true;
+  showToast('已有同名预设，换一个名字吧', 'error');
+  return false;
+}
+
+apiPresetSelect.addEventListener('change', renderApiPresetActions);
+apiPresetApply.addEventListener('click', function() {
+  var preset = apiPresets[apiPresetIndex()];
+  if (!preset) return;
+  var cfg = presetApiConfig(preset);
+  setDraftApiConfig(cfg);
+  applyApiConfig(readDraftApiConfig());
 });
 
-modalCancel.addEventListener('click', function() {
+apiPresetUpdate.addEventListener('click', function() {
+  var index = apiPresetIndex(), preset = apiPresets[index];
+  if (!preset) return;
+  var cfg = readDraftApiConfig();
+  openConfirm('保存到「' + preset.name + '」？', function() {
+    Object.assign(preset, cfg, { temp: cfg.temp.toFixed(2) });
+    saveApiPresets(index);
+    showToast('✓ 预设已更新', 'success');
+  }, { desc: '把下方表单写入这份预设。', okText: '保存修改' });
+});
+
+document.getElementById('btnSavePreset').addEventListener('click', function() {
+  var cfg = readDraftApiConfig();
+  openApiPresetName('另存为连接预设', '', function(name) {
+    if (!isApiPresetNameAvailable(name, -1)) return false;
+    apiPresets.push(Object.assign({ name: name }, cfg, { temp: cfg.temp.toFixed(2) }));
+    saveApiPresets(apiPresets.length - 1);
+    showToast('✓ 已另存为预设', 'success');
+  });
+});
+
+apiPresetRename.addEventListener('click', function() {
+  var index = apiPresetIndex(), preset = apiPresets[index];
+  if (!preset) return;
+  openApiPresetName('重命名连接预设', preset.name, function(name) {
+    if (name === preset.name) return;
+    if (!isApiPresetNameAvailable(name, index)) return false;
+    // 旧预设可能同名。角色原本跟随的是同名预设中的第一份。
+    var linked = apiPresets.find(function(item) { return item && item.name === preset.name; }) === preset
+      ? charList.filter(function(char) { return char.apiPresetName === preset.name; }) : [];
+    preset.name = name;
+    linked.forEach(function(char) { char.apiPresetName = name; });
+    saveApiPresets(index);
+    if (linked.length) saveCharList();
+    showToast('✓ 预设已重命名', 'success');
+  });
+});
+
+apiPresetDelete.addEventListener('click', function() {
+  var index = apiPresetIndex(), preset = apiPresets[index];
+  if (!preset) return;
+  openConfirm('删除预设「' + preset.name + '」？', function() {
+    apiPresets.splice(index, 1);
+    saveApiPresets(-1);
+    showToast('✓ 预设已删除', 'success');
+  });
+});
+
+function closePresetModal() {
   presetModal.classList.remove('open');
+  apiPresetNameAction = null;
+}
+modalCancel.addEventListener('click', closePresetModal);
+presetNameInput.addEventListener('keydown', function(event) {
+  if (event.key === 'Enter' && !event.isComposing && presetModalMode === 'api') modalConfirm.click();
 });
-
-// 渲染一张 API 预设卡片
-function createApiPresetItem(d, idx) {
-  var pItem = document.createElement('div');
-  pItem.className = 'preset-item';
-  pItem.style.position = 'relative';
-  var nameEl = document.createElement('div');
-  nameEl.style.cssText = 'font-size:14px;font-weight:600;color:#333;';
-  nameEl.textContent = d.name;
-  var subEl = document.createElement('div');
-  subEl.style.cssText = 'font-size:12px;color:#aaa;margin-top:3px;';
-  subEl.textContent = (d.model || '未选择模型') + ' · 温度 ' + d.temp;
-  var delBtn = document.createElement('button');
-  delBtn.textContent = '✕';
-  delBtn.title = '删除预设';
-  delBtn.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);border:none;background:none;color:#ccc;font-size:13px;cursor:pointer;';
-  delBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    apiPresets.splice(idx, 1);
-    mphoneStore.save('mphone_api_presets', apiPresets);
-    renderApiPresets();
-  });
-  pItem.appendChild(nameEl);
-  pItem.appendChild(subEl);
-  pItem.appendChild(delBtn);
-
-  // 点击预设 → 回填表单
-  pItem.addEventListener('click', function() {
-    document.getElementById('apiUrl').value = d.url;
-    document.getElementById('apiKey').value = d.key;
-    if (d.model) {
-      modelDisplay.textContent = d.model;
-      // 同步 popup 的 selected 状态（若列表已加载）
-      document.querySelectorAll('.model-popup-item').forEach(function(it) {
-        it.classList.toggle('selected', it.dataset.model === d.model);
-      });
-    } else {
-      modelDisplay.textContent = '请选择模型';
-      document.querySelectorAll('.model-popup-item').forEach(function(it) {
-        it.classList.remove('selected');
-      });
-    }
-    tempSlider.value = d.temp;
-    updateSliderThumb();
-    // 高亮选中预设
-    document.querySelectorAll('.preset-item').forEach(function(i) {
-      i.classList.remove('selected');
-    });
-    this.classList.add('selected');
-  });
-  return pItem;
-}
-
-function renderApiPresets() {
-  presetList.innerHTML = '';
-  apiPresets.forEach(function(d, i) { presetList.appendChild(createApiPresetItem(d, i)); });
-}
 
 // 字体预设：点击芯片 → 填入并应用；✕ 删除
 function renderFontPresets() {
@@ -248,47 +326,12 @@ modalConfirm.addEventListener('click', function() {
     return;
   }
 
-  // 读取正在填写的值（非已应用的 localStorage 值）
-  var pModel = modelDisplay.textContent.trim();
-  if (pModel === '请选择模型') pModel = '';
-  apiPresets.push({
-    name:  name,
-    url:   document.getElementById('apiUrl').value.trim(),
-    key:   document.getElementById('apiKey').value.trim(),
-    model: pModel,
-    temp:  parseFloat(tempSlider.value).toFixed(2)
-  });
-  mphoneStore.save('mphone_api_presets', apiPresets);
-  renderApiPresets();
-
-  // 自动展开预设列表
-  if (!presetList.classList.contains('open')) {
-    presetHeader.classList.add('open');
-    presetList.classList.add('open');
+  if (presetModalMode === 'api' && apiPresetNameAction && apiPresetNameAction(name) !== false) {
+    closePresetModal();
   }
-
-  presetModal.classList.remove('open');
 });
 
-closeOnBackdrop(presetModal);
-
-// 预设卡片折叠
-const presetHeader = document.getElementById('presetHeader');
-const presetList   = document.getElementById('presetList');
-
-presetHeader.addEventListener('click', function() {
-  presetHeader.classList.toggle('open');
-  presetList.classList.toggle('open');
-});
-
-document.querySelectorAll('.preset-item').forEach(function(item) {
-  item.addEventListener('click', function() {
-    document.querySelectorAll('.preset-item').forEach(function(i) {
-      i.classList.remove('selected');
-    });
-    item.classList.add('selected');
-  });
-});
+closeOnBackdrop(presetModal, closePresetModal);
 
 // 温度滑条
 const tempSlider       = document.getElementById('tempSlider');
@@ -300,9 +343,12 @@ function updateSliderThumb() {
   const max = parseFloat(tempSlider.max);
   const val = parseFloat(tempSlider.value);
   const pct = (val - min) / (max - min);
-  sliderThumb.style.left = (pct * tempSlider.offsetWidth) + 'px';
+  // 滑块的触点宽 18px，中心在轨道两端内侧各 9px。
+  sliderThumb.style.left = 'calc(' + (pct * 100) + '% + (' + (9 - pct * 18) + 'px))';
   tempValueDisplay.textContent = val.toFixed(2);
 }
 
-tempSlider.addEventListener('input', updateSliderThumb);
-requestAnimationFrame(function() { requestAnimationFrame(updateSliderThumb); });
+tempSlider.addEventListener('input', function() {
+  updateSliderThumb();
+  renderApiConnectionStatus();
+});

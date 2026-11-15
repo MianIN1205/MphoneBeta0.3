@@ -1,83 +1,56 @@
-// 眠花糖机 — 启动时恢复保存的主 API 设置
-
-// =============================================
-// API 配置持久化 — 加载已保存配置
-// =============================================
+// 眠花糖机 — 恢复主 API 配置、应用表单和刷新模型列表
 (function loadSavedConfig() {
-  var su = mphoneStore.load('mphone_api_url', null) || '';
-  var sk = mphoneStore.load('mphone_api_key', null) || '';
-  var st = mphoneStore.load('mphone_temperature', null) || '0.80';
-  if (su) document.getElementById('apiUrl').value = su;
-  if (sk) document.getElementById('apiKey').value = sk;
-  var sm = mphoneStore.load('mphone_model', null) || '';
-  if (sm) modelDisplay.textContent = sm;
-  tempSlider.value = st;
-  updateSliderThumb();
+  var cfg = readAppliedApiConfig();
+  setDraftApiConfig(cfg);
+  var match = apiPresets.findIndex(function(preset) {
+    return preset && sameApiConfig(presetApiConfig(preset), cfg);
+  });
+  renderApiPresets(match);
 })();
 
 document.getElementById('btnApply').addEventListener('click', function() {
-  var url   = document.getElementById('apiUrl').value.trim();
-  var key   = document.getElementById('apiKey').value.trim();
-  var model = modelDisplay.textContent.trim();
-  var temp  = tempSlider.value;
-  mphoneStore.save('mphone_api_url', url);
-  mphoneStore.save('mphone_api_key', key);
-  mphoneStore.save('mphone_temperature', temp);
-  if (model && model !== '请选择模型') {
-    mphoneStore.save('mphone_model', model);
-  } else {
-    mphoneStore.remove('mphone_model');
-  }
-  var btn = this, orig = btn.textContent;
-  btn.textContent = '✓ 已保存'; btn.style.color = '#4CAF50';
-  setTimeout(function() { btn.textContent = orig; btn.style.color = ''; }, 1500);
+  applyApiConfig(readDraftApiConfig());
 });
 
-// 刷新模型 — 真实 API（含旋转状态 + Toast 反馈）
-var _refreshing = false;
-refreshBtn.addEventListener('click', function(e) {
-  e.stopPropagation();
-  if (_refreshing) return;
-  var url = document.getElementById('apiUrl').value.trim() || mphoneStore.load('mphone_api_url', null) || '';
-  var key = document.getElementById('apiKey').value.trim() || mphoneStore.load('mphone_api_key', null) || '';
-  if (!url || !key) return;
-  _refreshing = true;
+function refreshApiModels(openPopup) {
+  if (refreshBtn.classList.contains('spinning')) return;
+  var cfg = readDraftApiConfig();
+  if (!cfg.url || !cfg.key) {
+    showToast('请先填接口地址和 API 密钥', 'plain');
+    return;
+  }
+  var request = ++apiModelRequest;
   refreshBtn.classList.add('spinning');
-  // 按接口类型取模型列表（Claude 官方 / OpenAI 兼容，见 js/core/llm.js）
-  llmListModels(url, key)
-    .then(function(models) {
-      if (!models.length) throw new Error('empty');
-      modelPopup.innerHTML = '';
-      models.forEach(function(id) {
-        var item = document.createElement('div');
-        item.className = 'model-popup-item';
-        item.dataset.model = id;
-        item.textContent = id;
-        item.addEventListener('click', function(ev) {
-          ev.stopPropagation();
-          document.querySelectorAll('.model-popup-item').forEach(function(i) { i.classList.remove('selected'); });
-          item.classList.add('selected');
-          modelDisplay.textContent = id;
-          modelPopup.classList.remove('open');
-          modelChevron.classList.remove('open');
-        });
-        modelPopup.appendChild(item);
+  llmListModels(cfg.url, cfg.key).then(function(models) {
+    if (request !== apiModelRequest) return;
+    if (!models.length) throw new Error('接口没有返回模型');
+    modelPopup.replaceChildren();
+    models.forEach(function(id) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'model-popup-item';
+      item.dataset.model = id;
+      item.textContent = id;
+      item.addEventListener('click', function(event) {
+        event.stopPropagation();
+        setDraftApiModel(id);
+        setApiModelPopup(false);
       });
-      // 优先恢复上次保存的模型，找不到则选第一个
-      var savedModel = mphoneStore.load('mphone_model', null) || '';
-      var matchedModel = (savedModel && models.indexOf(savedModel) >= 0) ? savedModel : models[0];
-      modelPopup.querySelectorAll('.model-popup-item').forEach(function(it) {
-        it.classList.toggle('selected', it.dataset.model === matchedModel);
-      });
-      modelDisplay.textContent = matchedModel;
-      refreshBtn.classList.remove('spinning');
-      _refreshing = false;
-      showToast('✓ 刷新成功', 'success');
-    })
-    .catch(function(err) {
-      console.warn('[Mphone] 获取模型列表失败:', err);
-      refreshBtn.classList.remove('spinning');
-      _refreshing = false;
-      showToast('✗ 获取失败：' + (err && err.message ? String(err.message).slice(0, 60) : ''), 'error');
+      modelPopup.appendChild(item);
     });
+    // 保留已填的模型。接口未列出它时，仍可在列表里手动换一个。
+    setDraftApiModel(readDraftApiConfig().model || models[0]);
+    if (openPopup && settingsScreen.classList.contains('active') && modelSelectBtn.getClientRects().length) setApiModelPopup(true);
+    showToast('✓ 刷新成功', 'success');
+  }).catch(function(err) {
+    if (request !== apiModelRequest) return;
+    console.warn('[Mphone] 获取模型列表失败:', err);
+    showToast('✗ 获取失败：' + (err && err.message ? String(err.message).slice(0, 60) : ''), 'error');
+  }).finally(function() {
+    if (request === apiModelRequest) refreshBtn.classList.remove('spinning');
+  });
+}
+refreshBtn.addEventListener('click', function(event) {
+  event.stopPropagation();
+  refreshApiModels(false);
 });

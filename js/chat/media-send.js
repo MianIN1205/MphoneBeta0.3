@@ -175,7 +175,7 @@ function mediaTestResult(text, ok) {
 }
 function mediaTestAsk(content) {
   // 测试时原样发送图片 / 音频，不自动换成文字
-  return llmRequest([{ role: 'user', content: content }], { stream: false, keepMedia: true, temperature: 0 })
+  return llmRequest([{ role: 'user', content: content }], { stream: false, cfg: readDraftApiConfig(), keepMedia: true, temperature: 0 })
     .then(function(text) { return String(text || '').trim(); });
 }
 document.getElementById('mediaTestImgBtn').addEventListener('click', function() {

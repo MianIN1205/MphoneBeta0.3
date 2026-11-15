@@ -225,7 +225,7 @@ function renderQuickPop() {
     apiPresets.forEach(function(p) {
       quickItem(p.name, p.model || '未选择模型', api === p, function() { setQuickField('apiPresetName', p.name); });
     });
-    if (!apiPresets.length) crQuickPop.insertAdjacentHTML('beforeend', '<div class="cr-qb-empty">还没有保存的模型预设，可以在 API 设置里「存为预设」</div>');
+    if (!apiPresets.length) crQuickPop.insertAdjacentHTML('beforeend', '<div class="cr-qb-empty">还没有保存的模型预设，可以到主 API 点「另存为」</div>');
   } else if (crQuickOpen === 'preset') {
     var cur = stPresets[stActivePresetIdx];
     var mine = charOwnPromptPreset(char);
