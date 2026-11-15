@@ -422,16 +422,66 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
 .api-preset-card .field-label, .api-config-card .field-label { display: block; }
 .api-preset-picker {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(4, 38px);
+  grid-template-columns: minmax(0, 1fr) repeat(4, 30px);
   gap: 4px;
   align-items: stretch;
 }
-.api-preset-picker .field-input {
+.api-preset-trigger, .api-preset-list button {
   min-width: 0;
   min-height: 42px;
-  padding-inline: 8px 3px;
-  text-overflow: ellipsis;
+  border: 0;
+  border-radius: 9px;
+  color: #4f4149;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
+.api-preset-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px 6px 10px;
+  background: rgba(0,0,0,0.045);
+}
+.api-preset-trigger span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-preset-trigger svg, .api-preset-icon svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.api-preset-trigger svg { color: #89747e; }
+.api-preset-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.api-preset-list {
+  max-height: 250px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  margin-top: 6px;
+  padding-top: 4px;
+}
+.api-preset-list button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+.api-preset-list button + button { border-top: 1px solid rgba(0,0,0,0.045); }
+.api-preset-list button[aria-pressed="true"], .api-preset-list button:active { background: #faedf3; }
+#settingsScreen .api-preset-list .auto-hint { margin: 0; }
 .api-preset-icon, .api-preset-drawer button {
   min-height: 42px;
   padding: 5px;
@@ -443,26 +493,30 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
   cursor: pointer;
 }
 .api-preset-icon {
+  position: relative;
   display: grid;
   place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
-.api-preset-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
+.api-preset-icon::before {
+  content: "";
+  position: absolute;
+  inset: 6px 0;
+  border: 1px solid rgba(142, 96, 116, 0.12);
+  border-radius: 8px;
+  background: #fff9fb;
 }
+.api-preset-icon svg { position: relative; }
 #apiPresetApply { color: #327358; }
 #apiPresetDelete { color: #b84e58; }
-.api-preset-icon[aria-expanded="true"] {
+.api-preset-icon[aria-expanded="true"]::before {
   background: #f9edf3;
   border-color: #d6adbf;
 }
-.api-preset-icon:focus-visible, .api-preset-drawer button:focus-visible {
+.api-preset-icon:focus-visible, .api-preset-trigger:focus-visible,
+.api-preset-list button:focus-visible, .api-preset-drawer button:focus-visible {
   outline: 2px solid #b86e88;
   outline-offset: 1px;
 }

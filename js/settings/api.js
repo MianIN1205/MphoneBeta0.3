@@ -60,7 +60,7 @@ function resetApiModelList() {
 
 function onApiConnectionEdit() {
   resetApiModelList();
-  setDraftApiModel('');
+  renderApiConnectionStatus();
 }
 apiUrlInput.addEventListener('input', onApiConnectionEdit);
 apiKey.addEventListener('input', onApiConnectionEdit);
@@ -108,6 +108,9 @@ if (!Array.isArray(apiPresets)) apiPresets = [];
 var fontPresets = mphoneStore.load('mphone_font_presets', []);
 
 const apiPresetSelect = document.getElementById('apiPresetSelect');
+const apiPresetList = document.getElementById('apiPresetList');
+const apiPresetSelectedName = document.getElementById('apiPresetSelectedName');
+var selectedApiPreset = -1;
 const apiPresetApply = document.getElementById('apiPresetApply');
 const apiPresetUpdate = document.getElementById('apiPresetUpdate');
 const apiPresetRename = document.getElementById('apiPresetRename');
@@ -147,26 +150,41 @@ function renderApiConnectionStatus() {
   if (apiConnectionStatus.textContent !== status) apiConnectionStatus.textContent = status;
 }
 
-function apiPresetIndex() {
-  return apiPresetSelect.value === '' ? -1 : Number(apiPresetSelect.value);
+function apiPresetSummary(preset) {
+  return (preset.model || '未选择模型') + ' · 温度 ' + presetApiConfig(preset).temp.toFixed(2);
 }
-function renderApiPresetActions() {
-  var preset = apiPresets[apiPresetIndex()];
+function renderApiPresets(index) {
+  if (index !== undefined) selectedApiPreset = index;
+  var preset = apiPresets[selectedApiPreset];
+  apiPresetSelectedName.textContent = preset ? preset.name : '选择预设';
   [apiPresetApply, apiPresetUpdate, apiPresetRename, apiPresetDelete].forEach(function(button) {
     button.disabled = !preset;
   });
-  apiPresetInfo.textContent = preset
-    ? (preset.model || '未选择模型') + ' · 温度 ' + presetApiConfig(preset).temp.toFixed(2)
-    : '';
-}
-function renderApiPresets(index) {
-  var selected = index === undefined ? apiPresetIndex() : index;
-  apiPresetSelect.replaceChildren(new Option('选择预设', ''));
-  apiPresets.forEach(function(preset, i) {
-    if (preset && typeof preset.name === 'string') apiPresetSelect.add(new Option(preset.name, String(i)));
+  apiPresetInfo.textContent = preset ? apiPresetSummary(preset) : '';
+  apiPresetList.replaceChildren();
+  apiPresets.forEach(function(item, i) {
+    if (!item || typeof item.name !== 'string') return;
+    var option = document.createElement('button');
+    option.type = 'button';
+    option.setAttribute('aria-pressed', String(i === selectedApiPreset));
+    var name = document.createElement('span'), meta = document.createElement('span');
+    name.textContent = item.name;
+    meta.className = 'auto-hint';
+    meta.textContent = apiPresetSummary(item);
+    option.append(name, meta);
+    option.addEventListener('click', function() {
+      renderApiPresets(i);
+      setApiPresetDrawer('');
+      apiPresetSelect.focus();
+    });
+    apiPresetList.appendChild(option);
   });
-  if (apiPresets[selected]) apiPresetSelect.value = String(selected);
-  renderApiPresetActions();
+  if (!apiPresetList.children.length) {
+    var empty = document.createElement('div');
+    empty.className = 'auto-hint';
+    empty.textContent = '还没有预设。点保存图标，再选「另存为」。';
+    apiPresetList.appendChild(empty);
+  }
 }
 function saveApiPresets(index) {
   mphoneStore.save('mphone_api_presets', apiPresets);
@@ -188,10 +206,12 @@ function applyApiConfig(cfg) {
   if (cfg.model) mphoneStore.save('mphone_model', cfg.model);
   else mphoneStore.remove('mphone_model');
   renderApiConnectionStatus();
-  showToast('✓ 主 API 配置已应用', 'success');
+  mphoneStore.flush().then(function() { showToast('✓ 主 API 配置已应用', 'success'); });
 }
 function setApiPresetDrawer(mode) {
   apiPresetDrawer = mode;
+  apiPresetList.hidden = mode !== 'pick';
+  apiPresetSelect.setAttribute('aria-expanded', String(mode === 'pick'));
   apiPresetSaveDrawer.hidden = mode !== 'save';
   apiPresetNameForm.hidden = mode !== 'rename' && mode !== 'copy';
   apiPresetSaveMenu.setAttribute('aria-expanded', String(mode === 'save' || mode === 'copy'));
@@ -213,16 +233,21 @@ function closeApiPresetName() {
   trigger.focus();
 }
 
-apiPresetSelect.addEventListener('change', function() {
-  setApiPresetDrawer('');
-  renderApiPresetActions();
+apiPresetSelect.addEventListener('click', function() {
+  setApiPresetDrawer(apiPresetDrawer === 'pick' ? '' : 'pick');
+});
+apiPresetList.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    setApiPresetDrawer('');
+    apiPresetSelect.focus();
+  }
 });
 apiPresetSaveMenu.addEventListener('click', function() {
   setApiPresetDrawer(apiPresetDrawer === 'save' || apiPresetDrawer === 'copy' ? '' : 'save');
 });
 apiPresetRename.addEventListener('click', function() {
   if (apiPresetDrawer === 'rename') { setApiPresetDrawer(''); return; }
-  var preset = apiPresets[apiPresetIndex()];
+  var preset = apiPresets[selectedApiPreset];
   if (preset) editApiPresetName('rename', preset.name);
 });
 document.getElementById('btnSavePreset').addEventListener('click', function() {
@@ -238,7 +263,7 @@ apiPresetNameForm.addEventListener('keydown', function(event) {
 });
 
 apiPresetApply.addEventListener('click', function() {
-  var preset = apiPresets[apiPresetIndex()];
+  var preset = apiPresets[selectedApiPreset];
   if (!preset) return;
   var cfg = presetApiConfig(preset);
   setDraftApiConfig(cfg);
@@ -247,7 +272,7 @@ apiPresetApply.addEventListener('click', function() {
 });
 
 apiPresetUpdate.addEventListener('click', function() {
-  var index = apiPresetIndex(), preset = apiPresets[index];
+  var index = selectedApiPreset, preset = apiPresets[index];
   if (!preset) return;
   var cfg = readDraftApiConfig();
   Object.assign(preset, cfg, { temp: cfg.temp.toFixed(2) });
@@ -260,7 +285,7 @@ apiPresetUpdate.addEventListener('click', function() {
 apiPresetNameForm.addEventListener('submit', function(event) {
   event.preventDefault();
   var renaming = apiPresetDrawer === 'rename';
-  var index = renaming ? apiPresetIndex() : -1;
+  var index = renaming ? selectedApiPreset : -1;
   var preset = apiPresets[index];
   var name = apiPresetNameInput.value.trim();
   if (renaming && !preset) { closeApiPresetName(); return; }
@@ -294,7 +319,7 @@ apiPresetNameForm.addEventListener('submit', function(event) {
 });
 
 apiPresetDelete.addEventListener('click', function() {
-  var index = apiPresetIndex(), preset = apiPresets[index];
+  var index = selectedApiPreset, preset = apiPresets[index];
   if (!preset) return;
   setApiPresetDrawer('');
   openConfirm('删除预设「' + preset.name + '」？', function() {
