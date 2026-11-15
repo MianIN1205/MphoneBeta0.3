@@ -12,7 +12,7 @@ var HUB_DEPLOY_URL = 'https://deploy.workers.cloudflare.com/?url=https://github.
 var HUB_PUSH_BATCH = 40;   // 和记忆库那边一次最多收的条数一样
 var HUB_CORE_MAX = 30000;  // 人设核心最多多少字（和记忆库那边一样）
 function hubLs(k, v) {
-  try { if (v === undefined) return localStorage.getItem(k) || ''; if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+  try { if (v === undefined) return mphoneLocal.getItem(k) || ''; if (v === null) mphoneLocal.removeItem(k); else mphoneLocal.setItem(k, v); } catch (e) {}
   return '';
 }
 function hubCfg() { return { url: hubLs('mphoneHubUrl').replace(/\/+$/, ''), pass: hubLs('mphoneHubPass'), auto: hubLs('mphoneHubAuto') !== '0' }; }

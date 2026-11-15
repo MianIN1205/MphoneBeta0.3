@@ -40,6 +40,26 @@ function parseFullBackup(text) {
   return data;
 }
 
+function confirmFullBackup(data, source, onRestore) {
+  var roles = Array.isArray(data.mphone_chars) ? data.mphone_chars.filter(backupRecord) : [];
+  var names = roles.slice(0, 6).map(function(role) {
+    return String(role.charAlias || role.charName || '未命名').trim().slice(0, 22) || '未命名';
+  });
+  if (roles.length > names.length) names.push('等');
+  function countEntries(key) {
+    if (!backupRecord(data[key])) return 0;
+    return Object.keys(data[key]).reduce(function(total, id) {
+      return total + (Array.isArray(data[key][id]) ? data[key][id].length : 0);
+    }, 0);
+  }
+  var desc = (source ? String(source).slice(0, 110) + '\n' : '') +
+    '角色 ' + roles.length + ' 个' + (names.length ? ' · ' + names.join('、') : '') + '\n' +
+    '聊天 ' + countEntries('mphone_chat_histories') + ' 条 · 剧情 ' + countEntries('mphone_drama_histories') +
+    ' 条 · 记忆 ' + countEntries('mphone_memories') + ' 条' +
+    '\n恢复会覆盖当前小手机中的聊天、角色、记忆和设置。';
+  openConfirm('恢复整机备份？', onRestore, { desc: desc, okText: '确认恢复' });
+}
+
 function restoreFullBackup(data, successText) {
   return mphoneStore.replaceAll(data).then(function() {
     showToast('✓ ' + successText + '，正在刷新', 'success');

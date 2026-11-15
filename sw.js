@@ -3,8 +3,10 @@
 // 只处理本站文件，AI / 语音 / 生图等外部接口请求完全不经过这里。
 
 // 文件拆分后 css/、js/ 也要预先缓存；改动这个列表时把版本号加一
-const V = '86';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
-const CACHE = 'mphone-v' + V;
+const V = '88';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
+const SCOPE = new URL(self.registration.scope);
+const CACHE_PREFIX = SCOPE.pathname === '/' ? 'mphone-v' : 'mphone:' + SCOPE.pathname + ':v';
+const CACHE = CACHE_PREFIX + V;
 const CSS = ['core/base', 'core/app-screen', 'core/controls', 'core/avatar', 'core/image-picker',
              'desk/statusbar', 'desk/desktop', 'desk/iconsets', 'desk/widgets', 'desk/appearance', 'desk/bookshelf',
              'settings/settings', 'settings/mcp', 'desk/desk-apps', 'desk/memory-lib', 'core/dialogs',
@@ -45,7 +47,7 @@ self.addEventListener('install', function (event) {
 self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) { return k.indexOf('mphone-v') === 0 && k !== CACHE; })
+      return Promise.all(keys.filter(function (k) { return k.indexOf(CACHE_PREFIX) === 0 && k !== CACHE; })
         .map(function (k) { return caches.delete(k); }));
     }).then(function () { return self.clients.claim(); })
   );
@@ -65,7 +67,11 @@ function putCache(req, res) {
 }
 function fromNet(req) { return fetch(req, { cache: 'no-store' }).then(function (res) { return putCache(req, res); }); }
 function fromCache(req) {
-  return caches.match(req).then(function (hit) { return hit || (req.mode === 'navigate' ? caches.match('./index.html') : null); });
+  return caches.open(CACHE).then(function (cache) {
+    return cache.match(req).then(function (hit) {
+      return hit || (req.mode === 'navigate' ? cache.match('./index.html') : null);
+    });
+  });
 }
 // 先等网络，等太久（或者出错）就用存的；网络后来回来了照样存进去
 function netFirst(req) {
@@ -94,9 +100,9 @@ function cacheFirst(req) {
 
 self.addEventListener('fetch', function (event) {
   var req = event.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   var url = new URL(req.url);
-  var file = url.pathname.slice(new URL(self.registration.scope).pathname.length);
+  if (req.method !== 'GET' || url.origin !== SCOPE.origin || url.pathname.indexOf(SCOPE.pathname) !== 0) return;
+  var file = url.pathname.slice(SCOPE.pathname.length);
   if (file && file !== 'index.html' && file !== 'manifest.webmanifest' && !/^(css|js|lib|icons)\//.test(file)) return;
   if (url.searchParams.get('v') === V && /^(css|js)\//.test(file)) {
     event.respondWith(fromCache(req).then(function (hit) { return hit || fromNet(req); }));
@@ -112,7 +118,7 @@ self.addEventListener('notificationclick', function (event) {
   var data = event.notification.data || {};
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     for (var i = 0; i < list.length; i++) {
-      if ('focus' in list[i]) {
+      if ('focus' in list[i] && new URL(list[i].url).pathname.indexOf(SCOPE.pathname) === 0) {
         list[i].postMessage({ type: 'mphone-open', open: data.open, charId: data.charId });
         return list[i].focus();
       }

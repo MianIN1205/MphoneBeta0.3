@@ -45,7 +45,7 @@ function applyDeskIconSet() {
   var ph = document.querySelector('.phone'), b = deskIconBase();
   ph.className = ph.className.replace(/\b(iconset|icon-fx)-\S+/g, '').trim();
   if (b) { ph.classList.add('iconset-' + b); if (deskIconSet.fx) ph.classList.add('icon-fx-' + deskIconSet.fx); }
-  try { localStorage.setItem('mphoneIconSet', JSON.stringify({ id: b, fx: deskIconSet.fx || '' })); } catch (_) {}
+  try { mphoneLocal.setItem('mphoneIconSet', JSON.stringify({ id: b, fx: deskIconSet.fx || '' })); } catch (_) {}
 }
 function paintDeskIcon(el) {
   var c = deskIconCfg[el.id] || {}, o = deskIconOrig[el.id];

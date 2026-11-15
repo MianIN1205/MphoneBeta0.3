@@ -547,3 +547,46 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
 .xf-main b { font-size: 14px; color: #444; word-break: break-all; }
 .xf-main small { font-size: 11.5px; color: #999; }
 .xf-select { width: 100%; border: none; border-radius: 8px; background: #fff; padding: 6px 8px; font: inherit; font-size: 12px; color: #666; }
+
+/* 设置与外观的紧凑排版，桌面格子和聊天气泡仍沿用各自尺寸。 */
+#settingsScreen .settings-nav, #appAppearance .settings-nav,
+#appCharSetting .settings-nav, #appGroupSetting .settings-nav, #appMemory .settings-nav {
+  padding-left: 14px; padding-right: 14px; padding-top: 38px; padding-bottom: 7px;
+}
+#settingsScreen .settings-content, #appAppearance .settings-content,
+#appCharSetting .settings-content, #appGroupSetting .settings-content, #appMemory .settings-content {
+  padding: 4px 13px 17px;
+}
+#settingsScreen .section-label, #appAppearance .section-label,
+#appCharSetting .section-label, #appGroupSetting .section-label, #appMemory .section-label {
+  padding: 7px 3px 4px; color: #86717a;
+}
+#settingsScreen .settings-card, #appAppearance .settings-card,
+#appCharSetting .settings-card, #appGroupSetting .settings-card, #appMemory .settings-card {
+  border-radius: 13px; margin-bottom: 8px; padding: 9px 11px;
+}
+#settingsScreen .field-label, #appAppearance .field-label,
+#appCharSetting .field-label, #appGroupSetting .field-label {
+  margin-top: 9px; margin-bottom: 4px;
+}
+#settingsScreen .field-label:first-child, #appAppearance .field-label:first-child,
+#appCharSetting .field-label:first-child, #appGroupSetting .field-label:first-child { margin-top: 0; }
+#settingsScreen .action-btn, #appAppearance .action-btn, #appMemory .action-btn {
+  min-height: 34px; border-radius: 11px; padding: 7px 6px; font-size: 13px;
+}
+#settingsScreen .auto-hint, #appAppearance .auto-hint,
+#appCharSetting .auto-hint, #appGroupSetting .auto-hint {
+  margin-top: 5px; color: #74666d; line-height: 1.42;
+}
+#settingsScreen .settings-subnav { padding: 4px 12px; gap: 4px; }
+#settingsScreen .settings-subnav-item { min-height: 34px; padding: 5px 1px; }
+#settingsScreen .api-test-row, #appMemory .api-test-row { gap: 6px; margin-top: 6px; }
+#settingsScreen .data-overview { gap: 10px; padding-top: 3px; }
+#settingsScreen .data-action {
+  width: 100%; padding: 4px 0; min-height: 35px; border: 0; border-bottom: 1px solid rgba(0,0,0,0.045);
+  background: transparent; text-align: left; justify-content: space-between; gap: 5px; font: inherit;
+}
+#settingsScreen .data-action:last-child { border-bottom: 0; }
+#settingsScreen .data-action .row-label { font-size: 12px; }
+#confirmDesc { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.55; }
+.global-css-scope { margin-left: 7px; }

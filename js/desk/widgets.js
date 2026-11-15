@@ -60,7 +60,7 @@ function saveDeskLayout() { mphoneStore.save('mphone_desk_layout', deskLayout); 
     cur = t === DEF ? '' : t;
     el.textContent = cur || DEF;
     mphoneStore.save('mphone_desk_sign', cur);
-    try { if (cur) localStorage.setItem('mphoneDeskSign', cur); else localStorage.removeItem('mphoneDeskSign'); } catch (_) {}
+    try { if (cur) mphoneLocal.setItem('mphoneDeskSign', cur); else mphoneLocal.removeItem('mphoneDeskSign'); } catch (_) {}
   });
 })();
 var deskEl = document.querySelector('.desktop');
@@ -267,7 +267,7 @@ function saveDeskSnap() {
     if (snap.length > 1500000) snap = JSON.stringify({ pos: pos, w: [] });
     if (snap === deskSnapLast) return;
     deskSnapLast = snap;
-    localStorage.setItem('mphoneDeskSnap', snap);
+    mphoneLocal.setItem('mphoneDeskSnap', snap);
   } catch (e) {}
 }
 function removeWidget(w) {

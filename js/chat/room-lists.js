@@ -115,6 +115,7 @@ function sendPickedImage(files) {
   if (crPlusBtn && crPlusPanel) {
     crPlusBtn.addEventListener('click', function(e) {
       e.stopPropagation();
+      renderPlusOrder();
       toggleCrDrawer(crPlusPanel, crPlusBtn);
     });
 
@@ -163,7 +164,7 @@ function sendPickedImage(files) {
 
   // 保留滑动，并让桌面用户可以直接点页码圆点。
   var plusPages = document.getElementById('crPlusPages');
-  var plusDots = document.querySelectorAll('#crPlusDots button');
+  var plusDots = document.querySelectorAll('#crPlusDots [aria-current]');
   plusDots.forEach(function(dot, index) {
     dot.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -174,6 +175,82 @@ function sendPickedImage(files) {
     var current = Math.round(plusPages.scrollLeft / Math.max(1, plusPages.clientWidth));
     plusDots.forEach(function(dot, index) { dot.setAttribute('aria-current', String(index === current)); });
   }, { passive: true });
+
+  var pinMax = 4;
+  var plusGrids = Array.from(plusPages.querySelectorAll('.cr-plus-grid'));
+  var plusItems = Array.from(plusPages.querySelectorAll('.cr-plus-item'));
+  var plusPins = mphoneStore.load('mphone_chat_plus_pins', []);
+  var pinOverlay = document.getElementById('crPlusPinOverlay');
+  var pinChoices = document.getElementById('crPlusPinChoices');
+  var pinSave = document.getElementById('crPlusPinSave');
+  var pinHint = document.getElementById('crPlusPinHint');
+  var plusOrderMode = null;
+
+  if (!Array.isArray(plusPins)) plusPins = [];
+  plusPins = plusPins.filter(function(name, index, list) {
+    return list.indexOf(name) === index && plusItems.some(function(item) { return item.dataset.func === name; });
+  }).slice(0, pinMax);
+
+  function inGroupRoom() { return appChatRoom.classList.contains('is-group'); }
+  function renderPlusOrder() {
+    var group = inGroupRoom();
+    if (plusOrderMode === group) return;
+    plusOrderMode = group;
+    var visible = plusItems.filter(function(item) { return group || !item.classList.contains('group-only'); });
+    var hidden = plusItems.filter(function(item) { return visible.indexOf(item) === -1; });
+    var pinned = plusPins.map(function(name) {
+      return visible.find(function(item) { return item.dataset.func === name; });
+    }).filter(Boolean);
+    var order = pinned.concat(visible.filter(function(item) { return pinned.indexOf(item) === -1; }), hidden);
+    order.forEach(function(item, index) { plusGrids[index < 8 ? 0 : 1].appendChild(item); });
+    plusPages.scrollLeft = 0;
+  }
+  function closePlusPins() { pinOverlay.classList.remove('open'); }
+  function checkedPlusPins() {
+    return Array.from(pinChoices.querySelectorAll('input:checked')).map(function(input) { return input.value; });
+  }
+  function updatePinChoices() {
+    var count = checkedPlusPins().length;
+    pinHint.textContent = '固定 ' + count + ' / ' + pinMax + '，按勾选顺序放在第一页。';
+    pinChoices.querySelectorAll('input').forEach(function(input) { input.disabled = !input.checked && count >= pinMax; });
+  }
+  document.getElementById('crPlusOrganize').addEventListener('click', function(e) {
+    e.stopPropagation();
+    pinChoices.textContent = '';
+    var ordered = plusItems.slice().sort(function(a, b) {
+      var ai = plusPins.indexOf(a.dataset.func), bi = plusPins.indexOf(b.dataset.func);
+      return (ai < 0 ? pinMax : ai) - (bi < 0 ? pinMax : bi);
+    });
+    ordered.forEach(function(item) {
+      var label = document.createElement('label'), input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = item.dataset.func;
+      input.checked = plusPins.indexOf(input.value) >= 0;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(input.value + (item.classList.contains('group-only') ? ' · 群聊' : '')));
+      pinChoices.appendChild(label);
+    });
+    // 通过选择先后决定顺序，取消再勾选即可调整。
+    var picked = plusPins.slice();
+    pinChoices.onchange = function(event) {
+      var input = event.target;
+      picked = picked.filter(function(name) { return name !== input.value; });
+      if (input.checked) picked.push(input.value);
+      updatePinChoices();
+    };
+    pinSave.onclick = function() {
+      plusPins = picked;
+      mphoneStore.save('mphone_chat_plus_pins', plusPins);
+      plusOrderMode = null;
+      renderPlusOrder();
+      closePlusPins();
+      showToast('✓ 已保存常用功能', 'success');
+    };
+    updatePinChoices();
+    pinOverlay.classList.add('open');
+  });
+  document.getElementById('crPlusPinCancel').addEventListener('click', closePlusPins);
+  closeOnBackdrop(pinOverlay, closePlusPins);
 
   // 点击聊天内容区或聚焦输入框时收起底部加号面板
   if (chatRoomContent) {

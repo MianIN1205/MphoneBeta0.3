@@ -4,8 +4,8 @@
 // 设置 — 数据管理：占用分析圆环 + 备份 / 导入（全部 mphone_ 数据）
 // =============================================
 (function() {
-  var exportRow = document.querySelector('#settingsScreen .data-icon-export').closest('.card-row');
-  var importRow = document.querySelector('#settingsScreen .data-icon-import').closest('.card-row');
+  var exportRow = document.getElementById('dataBackupExport');
+  var importRow = document.getElementById('dataBackupRestore');
   var importInput = document.createElement('input');
   importInput.type = 'file';
   importInput.accept = '.json,.txt,application/json,text/plain';   // 安卓分享出去的备份可能是 .txt
@@ -109,8 +109,8 @@
     if (!file) return;
     readBackupText(file).then(function(text) {
       var data = parseFullBackup(text);
-      openConfirm('导入会覆盖当前的全部数据，确定继续吗？', function() {
-        restoreFullBackup(data, '导入成功');
+      confirmFullBackup(data, file.name, function() {
+        restoreFullBackup(data, '恢复成功');
       });
     }).catch(function() {
       showToast('✗ 文件格式不正确或无法读取', 'error');

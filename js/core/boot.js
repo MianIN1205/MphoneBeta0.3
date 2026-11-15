@@ -4,7 +4,7 @@
 var mphoneFullViewport = matchMedia('(max-width: 560px) and (orientation: portrait)');
 var mphoneLayoutKey = 'mphoneLayout03';
 var mphoneLayoutChoice = null;
-try { mphoneLayoutChoice = localStorage.getItem(mphoneLayoutKey); } catch (_) {}
+try { mphoneLayoutChoice = mphoneLocal.getItem(mphoneLayoutKey); } catch (_) {}
 function mphoneUsesFullscreen() {
   return mphoneLayoutChoice === null ? mphoneFullViewport.matches : mphoneLayoutChoice === 'full';
 }
@@ -15,7 +15,7 @@ document.body.classList.toggle('phone-fullscreen', mphoneInitialFull);
 
 // 版本号：index.html 里的样式、boot.js 和下面加载的脚本网址都带 ?v=这个数，sw.js 里也是同一个（改了东西推之前跑 tools/bump-version.py 一起加一）。
 // 这样新的页面只会要新版本的文件、旧页面只要旧的，不会像以前网慢时那样新页面配上手机里存的旧脚本（外观里图标预设空着，用户遇到过）
-var MPHONE_V = '86';
+var MPHONE_V = '88';
 // 存储就绪后，按顺序加载各功能脚本（普通脚本，直接打开本地文件也能用）
 var MPHONE_SCRIPTS = [
   "js/core/utils.js",

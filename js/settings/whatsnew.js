@@ -29,8 +29,8 @@ function wnTimeline(notes) {
   });
   return out;
 }
-function wnGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
-function wnSet(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} }
+function wnGet(k) { try { return mphoneLocal.getItem(k); } catch (_) { return null; } }
+function wnSet(k, v) { try { if (v === null) mphoneLocal.removeItem(k); else mphoneLocal.setItem(k, v); } catch (_) {} }
 function wnShow(title, lines, okText, offText, onOff) {
   var ov = document.createElement('div');
   ov.className = 'mine-acc-overlay open';

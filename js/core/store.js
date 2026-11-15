@@ -1,6 +1,6 @@
 // 本地存储：同步读取内存，批量写入 IndexedDB，无法打开时使用 localStorage。
 var mphoneStore = (function() {
-  var DB_NAME = 'mphone', STORE = 'kv';
+  var DB_NAME = mphoneStoragePrefix + 'mphone', STORE = 'kv';
   var cache = Object.create(null);
   var dirty = new Set();
   var db = null;
@@ -22,12 +22,11 @@ var mphoneStore = (function() {
   function readLegacy() {
     var out = Object.create(null);
     try {
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (!k || k.indexOf('mphone_') !== 0) continue;
-        var raw = localStorage.getItem(k);
+      mphoneLocal.keys().forEach(function(k) {
+        if (k.indexOf('mphone_') !== 0) return;
+        var raw = mphoneLocal.getItem(k);
         try { out[k] = JSON.parse(raw); } catch (_) { out[k] = raw; }
-      }
+      });
     } catch (_) {}
     return out;
   }
@@ -75,8 +74,8 @@ var mphoneStore = (function() {
   }
 
   function writeLocal(key, value) {
-    if (value === undefined) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify(value));
+    if (value === undefined) mphoneLocal.removeItem(key);
+    else mphoneLocal.setItem(key, JSON.stringify(value));
   }
 
   // localStorage 没有事务。写入中途失败时，用原始文本逐项还原。
@@ -85,15 +84,15 @@ var mphoneStore = (function() {
     var previous = [];
     try {
       keys.forEach(function(k) {
-        var raw = localStorage.getItem(k);
+        var raw = mphoneLocal.getItem(k);
         writeLocal(k, data[k]);
         previous.push([k, raw]);
       });
     } catch (err) {
       for (var i = previous.length - 1; i >= 0; i--) {
         var entry = previous[i];
-        if (entry[1] === null) localStorage.removeItem(entry[0]);
-        else localStorage.setItem(entry[0], entry[1]);
+        if (entry[1] === null) mphoneLocal.removeItem(entry[0]);
+        else mphoneLocal.setItem(entry[0], entry[1]);
       }
       throw err;
     }

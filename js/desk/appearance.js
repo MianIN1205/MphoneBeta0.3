@@ -17,7 +17,7 @@ function applyMphoneLayout(fullscreen) {
 
 function chooseMphoneLayout(fullscreen) {
   mphoneLayoutChoice = fullscreen ? 'full' : 'frame';
-  try { localStorage.setItem(mphoneLayoutKey, mphoneLayoutChoice); } catch (_) {}
+  try { mphoneLocal.setItem(mphoneLayoutKey, mphoneLayoutChoice); } catch (_) {}
   // 继续写入旧版认识的设置，便于完整备份导回 0.1。
   mphoneStore.save('mphone_fullscreen', fullscreen);
   applyMphoneLayout(fullscreen);
@@ -330,22 +330,58 @@ var globalCssEl = document.createElement('style');
 globalCssEl.id = 'globalCss';
 document.head.appendChild(globalCssEl);
 var globalCss = mphoneStore.load('mphone_global_css', '');
+var globalCssScope = mphoneStore.load('mphone_global_css_scope', 'all') === 'skip-chat' ? 'skip-chat' : 'all';
 var globalCssSafeMode = /[?&]safe\b/.test(location.search);
 var globalCssInput = document.getElementById('globalCssInput');
-function setGlobalCss(css) {
-  globalCss = css || '';
-  mphoneStore.save('mphone_global_css', globalCss);
-  globalCssEl.textContent = globalCssSafeMode ? '' : globalCss;
-  globalCssInput.value = globalCss;
+var globalCssScopeStatus = document.getElementById('globalCssScopeStatus');
+var globalCssChatRoom = document.getElementById('appChatRoom');
+var globalCssScreensOverChat = ['appCharSetting', 'appGroupSetting', 'appReader', 'appPeek'].map(function(id) {
+  return document.getElementById(id);
+}).filter(Boolean);
+
+function globalCssForChat() {
+  return globalCssSafeMode || globalCssScope === 'skip-chat' ? '' : globalCss;
 }
-globalCssEl.textContent = globalCssSafeMode ? '' : globalCss;
+
+function refreshGlobalCss() {
+  var chatShowing = globalCssScope === 'skip-chat' && globalCssChatRoom.classList.contains('active') &&
+    !globalCssScreensOverChat.some(function(screen) { return screen.classList.contains('active'); });
+  // 暂停整张样式表，也会排除 body、:root 等祖先上的字体、颜色和变量。
+  var css = globalCssSafeMode || chatShowing ? '' : globalCss;
+  if (globalCssEl.textContent !== css) globalCssEl.textContent = css;
+}
+
+function setGlobalCss(css, scope) {
+  globalCss = css || '';
+  if (scope) {
+    globalCssScope = scope;
+    mphoneStore.save('mphone_global_css_scope', scope);
+  }
+  mphoneStore.save('mphone_global_css', globalCss);
+  refreshGlobalCss();
+  globalCssInput.value = globalCss;
+  globalCssScopeStatus.textContent = globalCssScope === 'skip-chat' ? '当前：跳过聊天和剧情' : '当前：全站生效';
+}
+
+var globalCssObserver = new MutationObserver(refreshGlobalCss);
+[globalCssChatRoom].concat(globalCssScreensOverChat).forEach(function(screen) {
+  globalCssObserver.observe(screen, { attributes: true, attributeFilter: ['class'] });
+});
+refreshGlobalCss();
 globalCssInput.value = globalCss;
+globalCssScopeStatus.textContent = globalCssScope === 'skip-chat' ? '当前：跳过聊天和剧情' : '当前：全站生效';
 document.getElementById('globalCssApplyBtn').addEventListener('click', function() {
-  var btn = this;
-  setGlobalCss(globalCssInput.value);
-  btn.classList.add('applied');
-  btn.textContent = '已应用';
-  setTimeout(function() { btn.classList.remove('applied'); btn.textContent = '应用'; }, 1200);
+  var css = globalCssInput.value;
+  function apply(scope) {
+    setGlobalCss(css, scope);
+    showToast('✓ 全局美化已应用', 'success');
+  }
+  openConfirm('全局美化应用到哪里？', function() { apply('skip-chat'); }, {
+    desc: '全局覆盖会在所有界面加载这份 CSS。跳过聊天窗口也会跳过剧情，离开对话后恢复全局样式。',
+    okText: '跳过聊天窗口',
+    alt: '全局覆盖',
+    onAlt: function() { apply('all'); }
+  });
 });
 
 // =============================================
@@ -416,8 +452,8 @@ document.getElementById('sysBarReset').addEventListener('click', function() {
 (function() {
   var t = document.getElementById('bootSplashToggle');
   if (!t) return;
-  try { t.checked = localStorage.getItem('mphoneBootSplash') === '1'; } catch (e) {}
+  try { t.checked = mphoneLocal.getItem('mphoneBootSplash') === '1'; } catch (e) {}
   t.addEventListener('change', function() {
-    try { if (t.checked) localStorage.setItem('mphoneBootSplash', '1'); else localStorage.removeItem('mphoneBootSplash'); } catch (e) {}
+    try { if (t.checked) mphoneLocal.setItem('mphoneBootSplash', '1'); else mphoneLocal.removeItem('mphoneBootSplash'); } catch (e) {}
   });
 })();

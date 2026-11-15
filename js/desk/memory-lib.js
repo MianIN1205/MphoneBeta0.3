@@ -14,6 +14,7 @@ function memCharName(c) { return (c && (c.charAlias || c.charName)) || '未命�
 
 function showMemHome() {
   memLibChar = '';
+  memPage = null;
   document.getElementById('memHome').style.display = '';
   document.getElementById('memDetail').style.display = 'none';
   document.getElementById('memTitle').textContent = '记忆库';
@@ -78,10 +79,43 @@ function renderMemLib() {
   }
   renderMemResults(char, memories);
 }
+var MEM_LIST_PAGE = 30;
+var memLoadMore = document.getElementById('memLoadMore');
+var memPage = null;
+function displayMemPage(box, char, list, timelineMode) {
+  if (!list.length) return;
+  var timeline = null;
+  if (timelineMode) {
+    timeline = document.createElement('ol');
+    timeline.className = 'mem-timeline';
+    box.appendChild(timeline);
+  }
+  memPage = { box: box, char: char, list: list, timeline: timeline, offset: 0, lastYear: null };
+  appendMemPage();
+}
+function appendMemPage() {
+  if (!memPage) return;
+  var state = memPage, next = state.list.slice(state.offset, state.offset + MEM_LIST_PAGE);
+  var fragment = document.createDocumentFragment();
+  if (state.timeline) {
+    state.lastYear = appendMemTimeline(fragment, state.char, next, state.lastYear);
+    state.timeline.appendChild(fragment);
+  } else {
+    next.forEach(function(m) { fragment.appendChild(renderMemCard(state.char, m)); });
+    state.box.appendChild(fragment);
+  }
+  state.offset += next.length;
+  var remaining = state.list.length - state.offset;
+  memLoadMore.hidden = remaining <= 0;
+  memLoadMore.textContent = '查看更多（剩余 ' + remaining + ' 条）';
+}
+memLoadMore.addEventListener('click', appendMemPage);
 function renderMemResults(char, memories) {
   var box = document.getElementById('memList'), terms = memSearchTokens(memSearch.value);
   var searching = terms.length > 0;
   box.textContent = '';
+  memPage = null;
+  memLoadMore.hidden = true;
   memSearchClear.hidden = !searching;
   document.getElementById('memOverview').hidden = searching;
   var emoRow = document.getElementById('memEmoFilter');
@@ -97,7 +131,7 @@ function renderMemResults(char, memories) {
       return b.score - a.score || (b.memory.when || b.memory.time) - (a.memory.when || a.memory.time);
     });
     memSearchStatus.textContent = hits.length ? '找到 ' + hits.length + ' 条记忆' : '没找到匹配的记忆';
-    hits.forEach(function(hit) { box.appendChild(renderMemCard(char, hit.memory)); });
+    displayMemPage(box, char, hits.map(function(hit) { return hit.memory; }), false);
     return;
   }
   var all = memories.filter(function(m) { return memLibFilter === 'tl' ? m.tl : (m.type === memLibFilter && !m.tl); });
@@ -120,8 +154,7 @@ function renderMemResults(char, memories) {
       '<div class="auto-hint desk-empty">还没有' + MEM_TYPE_NAME[memLibFilter] + '记忆。聊天时 TA 会自己记下，你也可以点右上角「添加」。</div>';
     return;
   }
-  if (memLibFilter === 'tl') { renderMemTimeline(box, char, list); return; }
-  list.forEach(function(m) { box.appendChild(renderMemCard(char, m)); });
+  displayMemPage(box, char, list, memLibFilter === 'tl');
 }
 function confirmMemDelete(char, memory, after) {
   openConfirm('删除这条记忆？', function() {
@@ -131,9 +164,7 @@ function confirmMemDelete(char, memory, after) {
     if (memLibChar === char.id) renderMemLib();
   });
 }
-function renderMemTimeline(box, char, memories) {
-  var timeline = document.createElement('ol'), lastYear = null;
-  timeline.className = 'mem-timeline';
+function appendMemTimeline(timeline, char, memories, lastYear) {
   memories.forEach(function(m) {
     var d = new Date(m.when || m.time), year = d.getFullYear();
     var row = document.createElement('li');
@@ -158,7 +189,7 @@ function renderMemTimeline(box, char, memories) {
     row.appendChild(edit);
     timeline.appendChild(row);
   });
-  box.appendChild(timeline);
+  return lastYear;
 }
 function renderMemCard(char, m) {
   var card = document.createElement('div');

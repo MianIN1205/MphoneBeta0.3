@@ -119,8 +119,8 @@ var cloudOnInput = document.getElementById('cloudOn');
 var cloudTokenInput = document.getElementById('cloudToken');
 var cloudPassInput = document.getElementById('cloudPass');
 var cloudStatus = document.getElementById('cloudStatus');
-function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } }
-function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (_) {} }
+function lsGet(k) { try { return mphoneLocal.getItem(k) || ''; } catch (_) { return ''; } }
+function lsSet(k, v) { try { if (v) mphoneLocal.setItem(k, v); else mphoneLocal.removeItem(k); } catch (_) {} }
 cloudOnInput.checked = !!backupMeta.cloudOn;
 cloudTokenInput.value = lsGet('mphoneCloudToken');
 cloudPassInput.value = lsGet('mphoneCloudPass');
@@ -283,7 +283,7 @@ document.getElementById('cloudRestore').addEventListener('click', function() {
     return decryptBackup(text, c.pass);
   }).then(function(res) {
     var data = parseFullBackup(res.json);
-    openConfirm('找到 ' + fmtAgo(res.time) + '的云端备份。恢复会覆盖现在的全部数据，确定继续吗？', function() {
+    confirmFullBackup(data, fmtAgo(res.time) + '的云端备份', function() {
       data[BACKUP_META_KEY] = Object.assign({}, backupMeta, { lastCloud: res.time, lastChange: res.time, snooze: 0 });
       restoreFullBackup(data, '已恢复');
     });
