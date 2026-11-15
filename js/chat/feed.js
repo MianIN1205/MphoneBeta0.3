@@ -4,7 +4,7 @@
 // 动态（朋友圈）+ 角色自主活动
 // =============================================
 // 动态数据：[{ id, author: { type: 'user' | 'char', id, name, avatar }, text, images: [], textImgs: [文字图描述], time,
-//             visibleTo: [角色 id]（仅用户动态）, likes: [author], comments: [{ id, author, text, time, replyTo: author | null }] }]
+//             visibleTo: [角色 id]（仅用户动态）, likes: [author], comments: [{ id, author, text, time, replyTo: author | null, replyToCommentId }] }]
 var feedPosts = mphoneStore.load('mphone_feed', []);
 var feedList          = document.getElementById('feedList');
 var feedMoreBtn       = document.getElementById('feedMoreBtn');
@@ -20,7 +20,7 @@ var feedCommentBar    = document.getElementById('feedCommentBar');
 var feedCommentInput  = document.getElementById('feedCommentInput');
 var feedComposeImages = [];
 var feedComposeTextImgs = [];   // 文字图：用一段文字描述画面，显示成一张图片卡
-var feedCommentTarget = null;   // { post, replyTo }
+var feedCommentTarget = null;   // { post, parent }
 
 // _busy 只是运行时状态，不写入存储
 function saveFeed() {
@@ -125,6 +125,7 @@ function renderFeed() {
 function renderFeedPost(post, me) {
   var el = document.createElement('div');
   el.className = 'feed-post';
+  el.dataset.postId = post.id;
 
   var head = document.createElement('div');
   head.className = 'feed-post-head';
@@ -213,28 +214,100 @@ function renderFeedPost(post, me) {
       likes.textContent = '♥ ' + post.likes.map(function(a) { return a.name; }).join('，');
       box.appendChild(likes);
     }
-    post.comments.forEach(function(c) {
-      var row = document.createElement('div');
-      row.className = 'feed-comment';
-      var who = document.createElement('b');
-      who.textContent = c.author.name;
-      row.appendChild(who);
-      if (c.replyTo) {
-        row.appendChild(document.createTextNode(' 回复 '));
-        var to = document.createElement('b');
-        to.textContent = c.replyTo.name;
-        row.appendChild(to);
+    feedCommentThreads(post.comments).forEach(function(thread) {
+      var group = document.createElement('div');
+      group.className = 'feed-comment-thread';
+      group.appendChild(renderFeedComment(post, thread.root, me));
+      if (thread.replies.length) {
+        var replies = document.createElement('div');
+        replies.className = 'feed-comment-replies';
+        thread.replies.forEach(function(c) { replies.appendChild(renderFeedComment(post, c, me)); });
+        group.appendChild(replies);
       }
-      row.appendChild(document.createTextNode('：' + c.text));
-      // 点别人的评论 → 回复 TA
-      row.addEventListener('click', function() {
-        if (!sameAuthor(c.author, me)) openFeedComment(post, c.author);
-      });
-      box.appendChild(row);
+      box.appendChild(group);
     });
     el.appendChild(box);
   }
   return el;
+}
+
+// 新回复按评论 ID 归楼。旧记录只有被回复的人，就找 TA 前一次的评论；找不到时原样保留。
+function feedCommentThreads(comments) {
+  var threads = [], byId = new Map(), byAuthor = new Map();
+  function authorKey(author) { return author && author.type + ':' + author.id; }
+  comments.forEach(function(comment) {
+    var parent = comment.replyToCommentId ? byId.get(comment.replyToCommentId) : byAuthor.get(authorKey(comment.replyTo));
+    var thread = parent || { root: comment, replies: [] };
+    if (parent) thread.replies.push(comment);
+    else threads.push(thread);
+    if (comment.id) byId.set(comment.id, thread);
+    if (comment.author) byAuthor.set(authorKey(comment.author), thread);
+  });
+  return threads;
+}
+
+function feedCommentTime(time) {
+  var date = new Date(time);
+  if (!time || !Number.isFinite(date.getTime())) return null;
+  var now = new Date(), clock = pad(date.getHours()) + ':' + pad(date.getMinutes());
+  var day = (date.getMonth() + 1) + '月' + date.getDate() + '日';
+  var year = date.getFullYear();
+  var stamp = document.createElement('time');
+  stamp.className = 'feed-comment-time';
+  stamp.dateTime = date.toISOString();
+  stamp.title = year + '年' + day + ' ' + clock;
+  stamp.textContent = date.toDateString() === now.toDateString() ? clock
+    : (year === now.getFullYear() ? '' : year + '年') + day + ' ' + clock;
+  return stamp;
+}
+
+function renderFeedComment(post, comment, me) {
+  var row = document.createElement('div');
+  row.className = 'feed-comment';
+  if (comment.id) row.dataset.commentId = comment.id;
+  var head = document.createElement('div');
+  head.className = 'feed-comment-head';
+  var names = document.createElement('span'), who = document.createElement('b');
+  who.textContent = comment.author.name;
+  names.appendChild(who);
+  if (comment.replyTo) {
+    var to = document.createElement('b');
+    to.textContent = comment.replyTo.name;
+    names.append(' 回复 ', to);
+  }
+  head.appendChild(names);
+  var time = feedCommentTime(comment.time);
+  if (time) head.appendChild(time);
+  var body = document.createElement('div');
+  body.className = 'feed-comment-body';
+  body.textContent = comment.text;
+  row.append(head, body);
+  if (!sameAuthor(comment.author, me)) {
+    var reply = document.createElement('button');
+    reply.className = 'feed-comment-reply';
+    reply.type = 'button';
+    reply.textContent = '回复';
+    reply.setAttribute('aria-label', '回复 ' + comment.author.name);
+    head.appendChild(reply);
+    row.classList.add('can-reply');
+    row.addEventListener('click', function() { openFeedComment(post, comment); });
+  }
+  return row;
+}
+
+function focusFeedTarget(postId, commentId) {
+  if (!postId) return;
+  requestAnimationFrame(function() {
+    var post = Array.from(feedList.children).find(function(el) { return el.dataset.postId === postId; });
+    if (!post) { showToast('这条动态已不在列表里', 'plain'); return; }
+    var comment = commentId && Array.from(post.querySelectorAll('[data-comment-id]')).find(function(el) {
+      return el.dataset.commentId === commentId;
+    });
+    var target = comment || post;
+    target.scrollIntoView({ block: 'center', inline: 'nearest' });
+    target.classList.add('feed-jump-target');
+    setTimeout(function() { target.classList.remove('feed-jump-target'); }, 2400);
+  });
 }
 
 // 点击横幅卡片更换背景
@@ -391,10 +464,10 @@ document.getElementById('feedCharPickCancel').addEventListener('click', function
 closeOnBackdrop(feedCharPickOverlay);
 
 // ---------- 评论 ----------
-function openFeedComment(post, replyTo) {
-  feedCommentTarget = { post: post, replyTo: replyTo };
+function openFeedComment(post, parent) {
+  feedCommentTarget = { post: post, parent: parent };
   feedCommentInput.value = '';
-  feedCommentInput.placeholder = replyTo ? '回复 ' + replyTo.name + '…' : '评论…';
+  feedCommentInput.placeholder = parent ? '回复 ' + parent.author.name + '…' : '评论…';
   feedCommentBar.classList.add('open');
   feedCommentInput.focus();
 }
@@ -402,22 +475,25 @@ function closeFeedComment() {
   feedCommentBar.classList.remove('open');
   feedCommentTarget = null;
 }
+function makeFeedComment(author, text, parent) {
+  var comment = { id: genFeedId('c'), author: author, text: text, time: Date.now(), replyTo: parent ? parent.author : null };
+  if (parent && parent.id) comment.replyToCommentId = parent.id;
+  return comment;
+}
 function sendFeedComment() {
   var text = feedCommentInput.value.trim();
   if (!text) { shakeEl(feedCommentInput); return; }
   if (!feedCommentTarget) return;
-  feedCommentTarget.post.comments.push({
-    id: genFeedId('c'), author: getMineAccount(), text: text, time: Date.now(),
-    replyTo: feedCommentTarget.replyTo
-  });
-  feedScheduleReply(feedCommentTarget.post, 30, 180);   // 被你评论 / 回复的角色过一会儿来回你
+  var post = feedCommentTarget.post, parent = feedCommentTarget.parent;
+  post.comments.push(makeFeedComment(getMineAccount(), text, parent));
+  feedScheduleReply(post, 30, 180);   // 被你评论 / 回复的角色过一会儿来回你
   saveFeed();
   closeFeedComment();
   renderFeed();
 }
 document.getElementById('feedCommentSend').addEventListener('click', sendFeedComment);
 feedCommentInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { e.preventDefault(); sendFeedComment(); }
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendFeedComment(); }
   if (e.key === 'Escape') closeFeedComment();
 });
 
@@ -502,11 +578,10 @@ function generateCharPost(idx) {
     });
     saveFeed();
     renderFeed();
-    showToast('「' + charAuthor(char).name + '」发布了新动态', 'plain');
-    if (typeof renderMoments === 'function') renderMoments();   // 「此刻」那排圆圈亮一圈
-    memLogFeed(char, '我在动态里发了：' + feedPosts[0].text.slice(0, 80));
-    if (typeof notifyFeedPost === 'function') notifyFeedPost(char, feedPosts[0]);
     var post = feedPosts[0];
+    if (typeof renderMoments === 'function') renderMoments();   // 「此刻」那排圆圈亮一圈
+    memLogFeed(char, '我在动态里发了：' + post.text.slice(0, 80));
+    notifyFeedActivity(char, post, '发布了新动态：' + (post.text || '[图片]'));
     if (typeof feedGenImages === 'function') feedGenImages(post);
     charNpcComments(post, idx).catch(function(err) { console.warn('[Mphone] NPC 评论失败:', err); });
   });
@@ -546,18 +621,19 @@ function charNpcComments(post, idx) {
     if (!m) return;
     var o; try { o = JSON.parse(m[0]); } catch (_) { return; }
     var clean = function(s) { return String(s || '').replace(actionRe(), '').replace(/[ \t]{2,}/g, ' ').trim(); };
-    var t = Date.now(), names = {};
+    var names = Object.create(null);
     (Array.isArray(o.comments) ? o.comments : []).slice(0, 4).forEach(function(c) {
       var name = clean(c && c.name).slice(0, 12), txt = clean(c && c.text);
       if (!name || !txt || name === me.name) return;
       var a = npcAuthor(char, name);
-      names[name] = a;
-      post.comments.push({ id: genFeedId('c'), author: a, text: txt, time: t += 1000 });
+      var comment = makeFeedComment(a, txt, null);
+      names[name] = comment;
+      post.comments.push(comment);
     });
     (Array.isArray(o.replies) ? o.replies : []).forEach(function(r) {
       var to = names[clean(r && r.to)], txt = clean(r && r.text);
       if (!to || !txt) return;
-      post.comments.push({ id: genFeedId('c'), author: me, text: txt, time: t += 1000, replyTo: to });
+      post.comments.push(makeFeedComment(me, txt, to));
     });
     var got = Object.keys(names);
     if (got.length) {
@@ -657,12 +733,12 @@ function charInteract(post, idx) {
     if (r.like && !isOwn && !post.likes.some(function(a) { return sameAuthor(a, me); })) post.likes.push(me);
     if (r.comment) {
       // 回复对象：最近一条 @ 自己或评论自己动态的用户评论
-      var replyTo = null;
+      var parent = null;
       for (var i = post.comments.length - 1; i >= 0; i--) {
         var c = post.comments[i];
-        if (c.author.type === 'user' && (sameAuthor(c.replyTo, me) || (isOwn && !c.replyTo))) { replyTo = c.author; break; }
+        if (c.author.type === 'user' && (sameAuthor(c.replyTo, me) || (isOwn && !c.replyTo))) { parent = c; break; }
       }
-      post.comments.push({ id: genFeedId('c'), author: me, text: r.comment, time: Date.now(), replyTo: replyTo });
+      post.comments.push(makeFeedComment(me, r.comment, parent));
       memLogFeed(char, (isOwn ? '我在自己的动态下回复：' : '我在 ' + post.author.name + ' 的动态下评论：') + r.comment.slice(0, 80));
     }
   });
@@ -718,7 +794,8 @@ function requestFeedInteraction(post, opts) {
         if (!msg) return;
         saveFeed(); renderFeed();
         // 和你有关的（回你、评论 / 赞你的动态）弹小横幅（用户要的），别的还是小提示
-        if ((toYou || mine) && typeof notifyFeedReply === 'function') notifyFeedReply(charList[idx], msg + (said.length ? '：' + said[said.length - 1].text : ''));
+        var comment = said[said.length - 1];
+        if (toYou || mine) notifyFeedActivity(charList[idx], post, msg + (comment ? '：' + comment.text : ''), comment);
         else showToast('「' + me.name + '」' + msg, 'plain');
       }).catch(function(err) { errors++; console.warn('[Mphone] 动态互动失败:', err); });
     });

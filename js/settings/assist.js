@@ -77,20 +77,18 @@ function notifyNewMessages(char, added) {
   showSystemNotification(tb[0], tb[1],
     { icon: notifyIcon(char), tag: 'chat-' + char.id, renotify: true, data: { open: 'chat', charId: char.id } });
 }
-function notifyFeedPost(char, post) {
-  if (!notifyReady() || document.visibilityState === 'visible' || !char) return;
-  var tbf = notifyTitleBody((char.charAlias || char.charName || '角色') + ' 发布了新动态', post.text || '[图片]');
-  showSystemNotification(tbf[0], tbf[1],
-    { icon: notifyIcon(char), tag: 'feed', renotify: true, data: { open: 'feed' } });
-}
-
-// 动态里角色回了你 / 评论、赞了你的动态：在小手机里弹横幅（点了去动态），在后台时发系统通知
-function notifyFeedReply(char, text) {
-  if (!char || !text) return;
-  if (document.visibilityState === 'visible') { showInAppNotice(char, [{ role: 'assistant', content: text, time: Date.now() }], 'feed'); return; }
+// 动态通知携带原帖和评论，前台横幅和系统通知使用同一条跳转路径。
+function notifyFeedActivity(char, post, text, comment) {
+  if (!char || !post || !text) return;
+  var target = { open: 'feed', postId: post.id, commentId: comment && comment.id };
+  if (document.visibilityState === 'visible') {
+    showInAppNotice(char, [{ role: 'assistant', content: text, time: Date.now() }], target);
+    return;
+  }
   if (!notifyReady()) return;
-  var tb = notifyTitleBody(char.charAlias || char.charName || '角色', text);
-  showSystemNotification(tb[0], tb[1], { icon: notifyIcon(char), tag: 'feed-' + char.id, renotify: true, data: { open: 'feed' } });
+  var tb = notifyTitleBody(char.charAlias || char.charName || '动态', text);
+  var tag = 'feed-' + post.id + '-' + (target.commentId || char.id);
+  showSystemNotification(tb[0], tb[1], { icon: notifyIcon(char), tag: tag, renotify: true, data: target });
 }
 
 // 小手机里的消息横幅：在小手机里、但没在看这个对话时收到消息，从顶部弹出（头像、名字、内容），点一下进对话，4 秒后收起
@@ -104,12 +102,12 @@ function hideInAppNotice() {
   inappNotice.style.transform = '';
   inappNotice.style.opacity = '';
 }
-function showInAppNotice(char, added, open) {
+function showInAppNotice(char, added, target) {
   if (!char || !added || !added.length || document.visibilityState !== 'visible') return;
-  inappNotice._open = open || '';   // 'feed'：点了去动态（不是进对话）
   var round = added[0].time || 0;
   if (round && inappDismissed[char.id] === round) return;
   inappNotice._round = round;
+  inappNotice._target = target || { open: 'chat', charId: char.id };
   paintCharAvatar(inappNotice.querySelector('.inapp-av'), char);
   inappNotice.querySelector('.inapp-name').textContent = char.charAlias || char.charName || '新消息';
   var last = added[added.length - 1];
@@ -154,28 +152,24 @@ function endInAppDrag() {
 inappNotice.addEventListener('pointerup', endInAppDrag);
 inappNotice.addEventListener('pointercancel', function() { if (inappDrag) { inappDrag.dy = 0; inappDrag = null; inappNotice.style.transition = ''; inappNotice.style.transform = ''; inappNotice.style.opacity = ''; inappTimer = setTimeout(hideInAppNotice, 4000); } });
 function openFromInAppNotice() {
-  var id = inappNotice._charId, open = inappNotice._open;
+  var target = inappNotice._target;
   hideInAppNotice();
-  if (open === 'feed') {
-    document.querySelectorAll('.app-screen.active, .settings-screen.active').forEach(function(s) { if (s.id !== 'appChat' && s.id !== 'appChatRoom') s.classList.remove('active'); });
-    openFromNotification({ open: 'feed' });
-    return;
-  }
-  // 先收起正开着的别的界面（设置、外观、角色设置…），再进对话
-  document.querySelectorAll('.app-screen.active, .settings-screen.active').forEach(function(s) {
-    if (s.id !== 'appChat' && s.id !== 'appChatRoom') s.classList.remove('active');
-  });
-  openFromNotification({ open: 'chat', charId: id });
+  openFromNotification(target);
 }
 
 // 点通知：打开对应的对话 / 动态
 function openFromNotification(data) {
-  data = data || {};
+  if (!data) return;
+  document.querySelectorAll('.app-screen.active, .settings-screen.active').forEach(function(screen) {
+    if (screen.id !== 'appChat' && screen.id !== 'appChatRoom') screen.classList.remove('active');
+  });
   if (!document.getElementById('appChat').classList.contains('active')) dockChat.click();
   if (data.open === 'feed') {
     if (appChatRoom.classList.contains('active')) document.querySelector('#appChatRoom .back-btn').click();
     var tab = document.querySelector('.chat-tab-item[data-tab="feed"]');
     if (tab) tab.click();
+    closeFeedComment();
+    focusFeedTarget(data.postId, data.commentId);
     return;
   }
   var idx = findCharIdx(data.charId);
@@ -196,8 +190,9 @@ if ('serviceWorker' in navigator) {
 (function() {
   var q = new URLSearchParams(location.search);
   if (!q.get('open')) return;
-  var data = { open: q.get('open'), charId: q.get('char') || '' };
-  history.replaceState(null, '', location.pathname);
+  var data = { open: q.get('open'), charId: q.get('char'), postId: q.get('post'), commentId: q.get('comment') };
+  ['open', 'char', 'post', 'comment'].forEach(function(key) { q.delete(key); });
+  history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
   onMphoneReady(function() { setTimeout(function() { openFromNotification(data); }, 300); });
 })();
 

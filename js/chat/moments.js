@@ -43,7 +43,7 @@ function renderMoments() {
 }
 
 // 点开一个圆圈：TA 此刻
-var momentCur = null;
+var momentCur = null, momentPostId = '';
 function openMoment(c) {
   momentCur = c;
   var box = document.getElementById('momentCard');
@@ -54,6 +54,7 @@ function openMoment(c) {
   box.querySelector('.moment-card-bio').textContent = c.charBio || '还没有个性签名';
   box.querySelector('.moment-card-when').textContent = c.headStatusAt ? fmtAgo(c.headStatusAt) : '';
   var post = momentLatestPost(c), pb = box.querySelector('.moment-card-post');
+  momentPostId = post ? post.id : '';
   pb.style.display = post ? '' : 'none';
   if (post) {
     pb.querySelector('.moment-card-post-text').textContent = post.text || ((post.textImgs || [])[0] ? '[图片] ' + post.textImgs[0] : '[图片]');
@@ -64,9 +65,14 @@ function openMoment(c) {
   mphoneStore.save('mphone_moment_seen', momentSeen);
   renderMoments();
 }
-function closeMoment() { document.getElementById('momentOverlay').classList.remove('open'); momentCur = null; }
+function closeMoment() { document.getElementById('momentOverlay').classList.remove('open'); momentCur = null; momentPostId = ''; }
 closeOnBackdrop(document.getElementById('momentOverlay'), closeMoment);
 document.getElementById('momentClose').addEventListener('click', closeMoment);
+document.getElementById('momentPost').addEventListener('click', function() {
+  var postId = momentPostId;
+  closeMoment();
+  if (postId) openFromNotification({ open: 'feed', postId: postId });
+});
 document.getElementById('momentChat').addEventListener('click', function() {
   var c = momentCur;
   closeMoment();

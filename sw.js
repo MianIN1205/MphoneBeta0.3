@@ -3,7 +3,7 @@
 // 只处理本站文件，AI / 语音 / 生图等外部接口请求完全不经过这里。
 
 // 文件拆分后 css/、js/ 也要预先缓存；改动这个列表时把版本号加一
-const V = '96';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
+const V = '97';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = SCOPE.pathname === '/' ? 'mphone-v' : 'mphone:' + SCOPE.pathname + ':v';
 const CACHE = CACHE_PREFIX + V;
@@ -119,10 +119,14 @@ self.addEventListener('notificationclick', function (event) {
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     for (var i = 0; i < list.length; i++) {
       if ('focus' in list[i] && new URL(list[i].url).pathname.indexOf(SCOPE.pathname) === 0) {
-        list[i].postMessage({ type: 'mphone-open', open: data.open, charId: data.charId });
+        list[i].postMessage({ type: 'mphone-open', open: data.open, charId: data.charId, postId: data.postId, commentId: data.commentId });
         return list[i].focus();
       }
     }
-    return self.clients.openWindow('./?open=' + encodeURIComponent(data.open || 'chat') + '&char=' + encodeURIComponent(data.charId || ''));
+    var q = new URLSearchParams({ open: data.open || 'chat' });
+    if (data.charId) q.set('char', data.charId);
+    if (data.postId) q.set('post', data.postId);
+    if (data.commentId) q.set('comment', data.commentId);
+    return self.clients.openWindow('./?' + q.toString());
   }));
 });

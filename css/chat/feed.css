@@ -89,11 +89,38 @@
   display: flex; flex-direction: column; gap: 4px;
 }
 .feed-likes { font-size: 12px; color: #b0506a; }
+.feed-comment-thread + .feed-comment-thread { border-top: 1px solid rgba(176, 80, 106, .12); padding-top: 4px; }
 .feed-comment {
-  font-size: 12.5px; color: #444; line-height: 1.5; cursor: pointer;
-  word-break: break-word;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #444;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
+.feed-comment.can-reply { cursor: pointer; }
+.feed-comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; color: #807a7d; }
+.feed-comment-head > span { flex: 1 1 75px; min-width: 0; }
 .feed-comment b { color: #b0506a; font-weight: 600; }
+.feed-comment-body { white-space: pre-wrap; }
+.feed-comment-time, .feed-comment-reply { flex-shrink: 0; font-size: 10.5px; white-space: nowrap; }
+.feed-comment-time { font-variant-numeric: tabular-nums; }
+.feed-comment-reply {
+  padding: 2px 0 2px 2px; border: 0; background: transparent;
+  color: #965b70; font-family: inherit; cursor: pointer;
+}
+.feed-comment-replies {
+  margin: 2px 0 2px 9px;
+  padding: 1px 2px 1px 5px;
+  border-left: 2px solid rgba(176, 80, 106, .23);
+  border-radius: 3px 8px 8px 3px;
+  background: rgba(255,255,255,.63);
+}
+.feed-comment-replies .feed-comment + .feed-comment { margin-top: 2px; }
+.feed-jump-target {
+  outline: 2px solid #d297ad;
+  outline-offset: -2px;
+}
 
 .feed-comment-bar {
   position: absolute; left: 0; right: 0; bottom: 68px;

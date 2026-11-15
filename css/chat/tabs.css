@@ -147,6 +147,8 @@
 .moment-card-line { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 14px; background: rgba(255,255,255,0.45); }
 .moment-card-k { flex-shrink: 0; font-size: 11.5px; color: #d0809a; line-height: 20px; letter-spacing: 1px; }
 .moment-card-status { font-size: 14px; color: #5a4249; line-height: 20px; }
+.moment-card-post { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.moment-card-post-arrow { margin-left: auto; color: #aa7388; font-size: 18px; }
 .moment-card-post-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .moment-card-post-text { font-size: 13px; color: #5f4f55; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .moment-card-post-when { font-size: 11px; color: #b49aa4; }
