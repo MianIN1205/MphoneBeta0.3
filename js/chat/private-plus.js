@@ -27,8 +27,8 @@ function privatePlusPush(ctx, data, label) {
   return msg;
 }
 function privatePlusLocation(ctx) {
-  var d = privatePlusDialog('发送位置', '<input class="field-input" placeholder="地点或地址" maxlength="160" aria-label="地点或地址"><div class="auto-hint" role="status"></div><div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close" data-locate>现实定位</button><button class="mine-acc-btn mine-acc-btn-add" data-send>发送位置</button></div>');
-  var input = d.querySelector('input'), hint = d.querySelector('[role="status"]'), coords = null, locate = d.querySelector('[data-locate]');
+  var d = privatePlusDialog('发送位置', '<input class="field-input" data-city placeholder="城市（可选）" maxlength="40" aria-label="城市"><input class="field-input" data-street placeholder="街道（可选）" maxlength="60" aria-label="街道"><input class="field-input" data-place placeholder="具体地点" maxlength="100" aria-label="具体地点"><div class="auto-hint" role="status"></div><div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close" data-locate>现实定位</button><button class="mine-acc-btn mine-acc-btn-add" data-send>发送位置</button></div>');
+  var cityInput = d.querySelector('[data-city]'), streetInput = d.querySelector('[data-street]'), input = d.querySelector('[data-place]'), hint = d.querySelector('[role="status"]'), coords = null, locate = d.querySelector('[data-locate]');
   d.querySelector('[data-close]').onclick = function() { d.remove(); };
   locate.onclick = function() {
     if (!navigator.geolocation) { hint.textContent = '当前设备无法定位，可以手动填写。'; return; }
@@ -41,9 +41,10 @@ function privatePlusLocation(ctx) {
     }, function() { hint.textContent = '定位没成功，可以手动填写。'; locate.disabled = false; }, { timeout: 10000 });
   };
   d.querySelector('[data-send]').onclick = function() {
-    var title = input.value.trim() || (coords ? '我的位置' : '');
+    var city = cityInput.value.trim(), street = streetInput.value.trim(), place = input.value.trim();
+    var title = [city, street, place].filter(Boolean).join(' · ') || (coords ? '我的位置' : '');
     if (!title) { shakeEl(input); return; }
-    if (privatePlusPush(ctx, { kind: 'location', title: title, coords: coords }, '[位置] ' + title)) d.remove();
+    if (privatePlusPush(ctx, { kind: 'location', title: title, city: city, street: street, place: place, coords: coords }, '[位置] ' + title)) d.remove();
   };
 }
 function privatePlusGifts() { return mphoneStore.load('mphone_keepsakes', []) || []; }
@@ -82,7 +83,7 @@ function privatePlusTransfer(ctx) {
     wallet.records.unshift({ id: id, amount: 0, note: title + ' · 待领取', time: Date.now(), transferState: 'pending' });
     wallets[uid] = wallet;
     mphoneStore.save('mphone_wallet', wallets);
-    var data = { kind: 'transfer', id: id, uid: uid, title: title, note: note, amount: amount, state: 'pending' };
+    var data = { kind: 'transfer', id: id, uid: uid, title: title, note: note, recipient: ctx.char.charAlias || ctx.char.charName || 'TA', amount: amount, state: 'pending' };
     var msg = privatePlusPush(ctx, data, '[' + title + ' · 待领取] ' + fmtMoney(amount) + (note ? ' · ' + note : ''));
     d.remove();
     privatePlusDecide(ctx.char, msg);
@@ -120,15 +121,54 @@ async function privatePlusDecide(char, msg) {
     msg.content = '[' + card.title + ' · ' + (card.state === 'accepted' ? '已收下' : '已拒绝') + '] ' + fmtMoney(card.amount) + (card.note ? ' · ' + card.note : '');
     saveHistories();
     document.querySelectorAll('.chat-msg-row').forEach(function(row) {
-      var text = row.querySelector('.private-plus-message');
-      if (row._msg === msg && text) {
-        text.textContent = msg.content;
-        var retry = row.querySelector('.private-plus-retry');
-        if (retry) retry.hidden = true;
-      }
+      if (row._msg !== msg) return;
+      var bubble = row.querySelector('.private-card-transfer');
+      if (bubble) bubble.title = privateTransferLabel(card);
+      var retry = row.querySelector('.private-plus-retry');
+      if (retry) retry.hidden = true;
     });
   } catch (_) { showToast('TA 暂时没能决定，可以点卡片再试', 'plain'); }
   finally { delete privateTransferBusy[card.id]; }
+}
+function privateTransferLabel(card) {
+  return card.state === 'accepted' ? '已收下' : card.state === 'declined' ? '已拒绝' : '待领取';
+}
+function privateKeepsakeCard(bubble, card) {
+  var header = document.createElement('div');
+  header.className = 'private-card-header';
+  var icon = document.createElement('span');
+  icon.className = 'private-card-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  if (card.kind === 'transfer') icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V6a2 2 0 0 1 2-2h11v3M5 7h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><path d="M20 11h-5a2 2 0 0 0 0 4h5m-5-2h.01"/></svg>';
+  var category = document.createElement('span');
+  category.textContent = card.kind === 'gift' ? '纪念礼物' : '转给 ' + (card.recipient || (charList[openingChatCharIdx] || {}).charAlias || (charList[openingChatCharIdx] || {}).charName || 'TA');
+  var title = document.createElement('strong');
+  title.className = 'private-card-title';
+  title.textContent = card.kind === 'gift' ? card.title : fmtMoney(card.amount);
+  bubble.replaceChildren();
+  if (card.kind === 'gift') {
+    var ribbon = document.createElement('span');
+    ribbon.className = 'private-gift-ribbon';
+    ribbon.innerHTML = '<i></i><b></b>';
+    ribbon.setAttribute('aria-hidden', 'true');
+    bubble.appendChild(ribbon);
+    header.appendChild(category);
+    bubble.append(header, title);
+  } else {
+    var text = document.createElement('div');
+    text.className = 'private-transfer-main';
+    title.textContent += ' 元';
+    text.append(category, title);
+    header.append(icon, text);
+    bubble.appendChild(header);
+    bubble.title = privateTransferLabel(card);
+  }
+  if (card.note || card.kind === 'transfer') {
+    var note = document.createElement('div');
+    note.className = 'private-card-note';
+    note.textContent = card.kind === 'transfer' ? '备注：' + (card.note || '—') : card.note;
+    bubble.appendChild(note);
+  }
 }
 function appendPrivatePlusCard(role, m, list, empty) {
   var result = appendMsg(role, '', false, list, empty), card = m.privateCard;
@@ -150,10 +190,15 @@ function appendPrivatePlusCard(role, m, list, empty) {
   result.bubble.classList.add('private-plus-card');
   if (card.kind === 'location' && card.coords && Number.isFinite(card.coords.lat) && Number.isFinite(card.coords.lon)) {
     var link = document.createElement('a');
-    link.textContent = '在地图中查看';
+    link.textContent = card.title;
+    link.setAttribute('aria-label', '在地图中查看：' + card.title);
     link.href = 'https://www.openstreetmap.org/?mlat=' + card.coords.lat + '&mlon=' + card.coords.lon + '#map=16/' + card.coords.lat + '/' + card.coords.lon;
     link.target = '_blank'; link.rel = 'noopener noreferrer';
-    result.bubble.appendChild(link);
+    text.replaceChildren(link);
+  }
+  if (card.kind === 'gift' || card.kind === 'transfer') {
+    result.bubble.classList.add('private-keepsake-card', 'private-card-' + card.kind);
+    privateKeepsakeCard(result.bubble, card);
   }
   if (card.kind === 'transfer') {
     var button = document.createElement('button');
@@ -169,8 +214,45 @@ function appendPrivatePlusCard(role, m, list, empty) {
   }
   return result;
 }
+var activePrivateCall = null;
 function privatePlusCall(ctx) {
-  var d = privatePlusDialog('通话', '<div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close" data-mode="audio">语音</button><button class="mine-acc-btn mine-acc-btn-close" data-mode="video">视频</button></div><video playsinline muted hidden></video><div class="auto-hint" role="status">选择语音或视频。可以直接打字。</div><div class="private-call-log" aria-live="polite"></div><textarea class="field-input" rows="2" placeholder="你想说的话" aria-label="你的文字"></textarea><div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close" data-record>录音</button><button class="mine-acc-btn mine-acc-btn-add" data-send>发送</button></div><audio controls hidden></audio>');
+  if (activePrivateCall) { activePrivateCall.restore(); return; }
+  var picker = privatePlusDialog('通话', '<div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close" data-mode="audio">语音通话</button><button class="mine-acc-btn mine-acc-btn-add" data-mode="video">视频通话</button></div>');
+  picker.querySelector('[data-close]').onclick = function() { picker.remove(); };
+  picker.querySelectorAll('[data-mode]').forEach(function(button) {
+    button.onclick = function() { picker.remove(); openPrivateCallScreen(ctx, button.dataset.mode); };
+  });
+}
+function openPrivateCallScreen(ctx, mode) {
+  if (activePrivateCall) { activePrivateCall.restore(); return; }
+  var d = document.createElement('section');
+  d.className = 'private-call-screen';
+  d.setAttribute('role', 'dialog');
+  d.setAttribute('aria-label', mode === 'video' ? '视频通话' : '语音通话');
+  d.innerHTML = '<header class="private-call-header"><button type="button" data-minimize aria-label="收起为小窗">⌄</button><span></span></header>' +
+    '<div class="private-call-stage"><div class="private-call-avatar"></div><strong class="private-call-name"></strong><small class="private-call-time">00:00</small><video playsinline muted hidden></video></div>' +
+    '<div class="private-call-bottom"><div class="private-call-status" role="status"></div><details class="private-call-text"><summary>文字聊天</summary><div class="private-call-log" aria-live="polite"></div><div class="private-call-compose"><textarea class="field-input" rows="1" placeholder="你想说的话" aria-label="你的文字"></textarea><button type="button" data-send>发送</button></div></details><audio controls hidden></audio>' +
+    '<div class="private-call-controls"><button type="button" data-record>录音</button><button type="button" data-camera hidden>关摄像头</button><button type="button" data-close>挂断</button></div></div>';
+  var mini = document.createElement('button');
+  mini.type = 'button'; mini.className = 'private-call-mini'; mini.hidden = true;
+  mini.setAttribute('aria-label', '返回通话');
+  mini.innerHTML = '<span aria-hidden="true">☎</span><small>00:00</small>';
+  var root = document.querySelector('.phone');
+  root.appendChild(d); root.appendChild(mini);
+  var name = ctx.char.charAlias || ctx.char.charName || 'TA';
+  d.querySelector('.private-call-header span').textContent = mode === 'video' ? '视频通话' : '语音通话';
+  d.querySelector('.private-call-name').textContent = name;
+  paintCharAvatar(d.querySelector('.private-call-avatar'), ctx.char);
+  function restore() { d.hidden = false; mini.hidden = true; d.querySelector('[data-minimize]').focus(); }
+  activePrivateCall = { restore: restore };
+  mini.onclick = restore;
+  d.querySelector('[data-minimize]').onclick = function() { d.hidden = true; mini.hidden = false; mini.focus(); };
+  var started = Date.now();
+  var clock = setInterval(function() {
+    var elapsed = Math.floor((Date.now() - started) / 1000);
+    var time = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
+    d.querySelector('.private-call-time').textContent = mini.querySelector('small').textContent = time;
+  }, 1000);
   var video = d.querySelector('video'), audio = d.querySelector('audio'), input = d.querySelector('textarea'), log = d.querySelector('.private-call-log'), hint = d.querySelector('[role="status"]');
   var record = d.querySelector('[data-record]'), send = d.querySelector('[data-send]'), camera, mic, recorder, recording, voiceUrl, cameraRequest = 0, recordTimer, closed = false, busy = false;
   var request = new AbortController(), conversation = [];
@@ -178,23 +260,33 @@ function privatePlusCall(ctx) {
   function close() {
     closed = true; request.abort(); clearTimeout(recordTimer); stop(camera); stop(mic); audio.pause();
     if (voiceUrl) URL.revokeObjectURL(voiceUrl);
-    d.remove();
+    clearInterval(clock); activePrivateCall = null; d.remove(); mini.remove();
   }
-  d.querySelector('[data-close]').textContent = '结束通话';
   d.querySelector('[data-close]').onclick = close;
-  d.querySelector('[data-mode="audio"]').onclick = function() {
-    cameraRequest++; stop(camera); camera = null; video.srcObject = null; video.hidden = true; hint.textContent = '语音通话 · 可以录音或打字。';
-  };
-  d.querySelector('[data-mode="video"]').onclick = async function() {
+  var cameraButton = d.querySelector('[data-camera]');
+  async function startCamera() {
     if (camera) return;
     var attempt = ++cameraRequest;
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
       if (closed || camera || attempt !== cameraRequest) { stop(stream); return; }
       camera = stream; video.srcObject = stream; video.hidden = false; await video.play();
-      hint.textContent = '视频通话 · 发送时附上一帧画面。';
-    } catch (_) { hint.textContent = '摄像头不可用，可以继续用语音或文字。'; }
-  };
+      cameraButton.textContent = '关摄像头';
+      hint.textContent = '发送时会附上当前画面';
+    } catch (_) { hint.textContent = '摄像头不可用，可以继续语音或文字'; }
+  }
+  hint.textContent = '可以录音，也可以用文字聊天';
+  if (mode === 'video') {
+    cameraButton.hidden = false;
+    cameraButton.onclick = function() {
+      if (!camera) { startCamera(); return; }
+      cameraRequest++; stop(camera); camera = null; video.srcObject = null; video.hidden = true;
+      cameraButton.textContent = '开摄像头';
+      hint.textContent = '摄像头已关闭';
+    };
+    cameraButton.textContent = '开摄像头';
+    startCamera();
+  }
   record.onclick = async function() {
     if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
     record.disabled = true;
@@ -208,7 +300,7 @@ function privatePlusCall(ctx) {
         clearTimeout(recordTimer); stop(mic); record.textContent = '录音';
         if (!chunks.length || closed) return;
         var reader = new FileReader();
-        reader.onload = function() { recording = reader.result; hint.textContent = '录音已就绪，点发送。'; };
+        reader.onload = function() { recording = reader.result; hint.textContent = '录音已就绪，点发送。'; d.querySelector('.private-call-text').open = true; };
         reader.readAsDataURL(new Blob(chunks, { type: recorder.mimeType }));
       };
       recorder.start();
@@ -250,6 +342,7 @@ function privatePlusCall(ctx) {
       if (closed) return;
       if (!reply) throw new Error('没有回复');
       paint('我', parts[0].text); paint(name, reply);
+      d.querySelector('.private-call-text').open = true;
       conversation.push({ role: 'user', content: parts[0].text }, { role: 'assistant', content: reply });
       input.value = ''; recording = null; hint.textContent = '可以继续说话或打字。';
       if (ttsCfg.key) {
