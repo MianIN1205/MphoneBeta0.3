@@ -289,11 +289,15 @@ function memMaybeDigest(char) {
   return llmRequest([{ role: 'user', content: prompt }], { stream: false, cfg: api }).then(function(text) {
     text = String(text || '').replace(/^摘要[:：]\s*/, '').trim();
     if (!text) return;   // 模型没有返回摘要，保留原文供下次重试。
-    memAdd(char, { type: 'long', text: range + '的小事：' + text, source: 'digest', time: batch[batch.length - 1].time, dupAt: 0.97 });
-    var left = (memFading[char.id] || []).filter(function(m) { return batch.indexOf(m) < 0; });
-    if (left.length) memFading[char.id] = left; else delete memFading[char.id];
-    mphoneStore.save('mphone_mem_fading', memFading);
-    if (typeof memLibChar !== 'undefined' && memLibChar === char.id && typeof renderMemLib === 'function') renderMemLib();
+    var saved = memAdd(char, { type: 'long', text: range + '的小事：' + text, source: 'digest', time: batch[batch.length - 1].time, exactOnly: true });
+    if (!saved) return;
+    return mphoneStore.flush().then(function() {
+      if (mphoneStore.hasPending('mphone_memories')) return;
+      var left = (memFading[char.id] || []).filter(function(m) { return batch.indexOf(m) < 0; });
+      if (left.length) memFading[char.id] = left; else delete memFading[char.id];
+      mphoneStore.save('mphone_mem_fading', memFading);
+      if (typeof memLibChar !== 'undefined' && memLibChar === char.id && typeof renderMemLib === 'function') renderMemLib();
+    });
   }).catch(function(err) { console.warn('[Mphone] 合成几天的小事失败:', err); })
     .then(function() { delete memDigestBusy[char.id]; });
 }
@@ -390,7 +394,7 @@ function memoryContextFor(char, hist) {
       var desc = { short: '短期＝几天内有用的事', long: '长期＝要一直记得的事实、喜好和经历', precious: '珍贵＝特别重要、想永远珍藏的回忆' };
       out += (out ? '\n\n' : '') + '【记下新记忆】如果这次对话里出现了值得记住的新信息，在回复最后另起一行写 <记忆 类型="' +
         allowed.map(function(t) { return MEM_TYPE_NAME[t]; }).join('|') + '">一句话</记忆>，可以写多条，用户看不到（' +
-        allowed.map(function(t) { return desc[t]; }).join('；') + '）。优先记用户本人和你们之间发生的事：用户亲口说过的偏好、习惯、在意或介意的细节，以及你们的约定、共同经历和有来由的小梗。小事只要下次还能用得上，也值得记；保留一句具体细节，比如用户喜欢什么、什么时候会这样、你们当时说了什么。' +
+        allowed.map(function(t) { return desc[t]; }).join('；') + '）。优先记用户本人和你们之间发生的事：用户亲口说过的偏好、习惯、在意或介意的细节，以及你们的约定、共同经历和有来由的小梗。稳定的喜好、边界和以后还要履行的约定，优先记长期；对你们特别有意义的共同经历可以记珍贵。近期可能接着聊、但不会长期有用的放短期，同一件事的零碎进展写成一条。保留一处有来由的具体细节；没有后续意义的背景不必另记。' +
         '从用户说过或双方实际经历过的事取材；不要把你的猜测、角色独自过的日常、NPC 背景或布景当作用户记忆。剧情只记双方共同经历里值得延续的细节，不当成用户现实生活的事实。没有新信息就不写，已经记得的不要重复记。' +
         (cfg.types.long ? '另外，' + (youName = youName || (typeof resolveCharAccount === 'function' && resolveCharAccount(char).nickname) || '用户') + '的生活有了长久的变化或重要节点（搬家、换工作或学校、毕业、生病和康复、换了或没了常用的东西、开始养宠物、身边重要的人有了变化…）时，记一条时间线：<记忆 类型="时间线" 时间="YYYY-MM-DD">现在怎样</记忆>（时间是大概哪天发生的，不知道就不写；写清楚变化之后的样子，比如「换了环境，现在没有电脑」），零碎的小事照旧记短期。' : '') +
         '长期和珍贵的可以多写三个属性，像人记住一件事时连着当时的感觉：情绪="' + MEM_EMOS.join('|') + '"（选一个）强度="1|2|3"（越强越难忘）线索="3～6 个这件事里具体的东西，用顿号隔开"（看到的、听到的、闻到的、吃到的、摸到的、地点、物件，只写这件事里真有的，不要编）。' +

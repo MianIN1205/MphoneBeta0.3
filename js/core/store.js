@@ -195,6 +195,7 @@ var mphoneStore = (function() {
     },
     replaceAll: replaceAll,
     usingIndexedDB: function() { return !!db; },
-    flush: flush
+    flush: flush,
+    hasPending: function(key) { return dirty.has(key); }
   };
 })();
