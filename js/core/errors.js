@@ -123,17 +123,39 @@ function errRemember(hist, err, ctx) {
   }
   return p;
 }
+var ERR_SHORT_BY_KIND = {
+  noapi: '未配置 API', empty: '空回复', refusal: '内容受限', context: '上下文过长',
+  auth: '认证失败', money: '额度不足', forbidden: '权限受限', notfound: '接口或模型不存在',
+  toolarge: '请求过大', ratelimit: '请求限流', timeout: '请求超时', server: '服务异常',
+  network: '网络错误', format: '响应格式错误', badreq: '请求无效'
+};
+var ERR_SHORT_BY_HTTP = {
+  400: '请求无效', 401: '认证失败', 402: '额度不足', 403: '权限受限', 404: '接口或模型不存在',
+  405: '请求方法不支持', 408: '请求超时', 409: '请求冲突', 413: '请求过大',
+  415: '格式不支持', 422: '参数无效', 429: '请求限流', 500: '服务内部错误',
+  502: '网关错误', 503: '服务暂不可用', 504: '网关超时', 522: '连接超时',
+  524: '服务响应超时', 529: '服务繁忙'
+};
+function errShortLabel(err, ex) {
+  var status = Number(err.status);
+  var hasStatus = Number.isInteger(status) && status >= 400 && status <= 599;
+  var specific = ['context', 'refusal', 'money'].indexOf(ex.id) >= 0;
+  var label = (specific && ERR_SHORT_BY_KIND[ex.id]) ||
+    (hasStatus && ERR_SHORT_BY_HTTP[status]) || ERR_SHORT_BY_KIND[ex.id];
+  return hasStatus ? status + ' · ' + (label || (status >= 500 ? '服务异常' : '请求失败')) : label || '未知错误';
+}
 function errNoticeEl(p) {
   var e = { message: p.message, status: p.status, statusText: p.statusText, name: p.name, url: p.url, body: p.body, stack: p.stack };
   var ex = explainError(e);
   var el = document.createElement('div');
   el.className = 'cr-recall-notice cr-err-notice';
-  el.appendChild(document.createTextNode('⚠️ 回复失败：' + ex.title));
+  var summary = errShortLabel(e, ex);
+  el.appendChild(document.createTextNode('⚠️ 回复失败 · ' + summary));
   var more = document.createElement('span');
   more.className = 'cr-recall-reedit';
-  more.textContent = '查看原因';
+  more.textContent = '查看详情';
   el.appendChild(more);
-  var detail = { ex: ex, err: e, time: p.time, ctx: { model: p.model, url: p.ctxUrl } };
+  var detail = { ex: ex, err: e, time: p.time, summary: summary, ctx: { model: p.model, url: p.ctxUrl } };
   el.addEventListener('click', function() { openErrInfo(detail); });
   return el;
 }
@@ -161,69 +183,59 @@ function showErrNotice(err, list, empty, ctx, hist) {
 
 // 密钥打码（不截断：完整报错要整段显示）
 function errRedact(text) {
-  return String(text || '').replace(/(sk|key|pk)-[A-Za-z0-9_\-]{6,}/gi, '$1-***').replace(/Bearer\s+\S+/gi, 'Bearer ***')
+  return String(text || '')
+    .replace(/(?:https?:\/\/)?mianin1205\.github\.io(?:\/MphoneBeta[^\/\s"'<>?#]+\/?|\/)?/gi, '')
+    .replace(/(?:https?:\/\/)?(?:www\.)?github\.com\/MianIN1205\/MphoneBeta[^\/\s"'<>?#]+(?:[^\s"'<>]*)/gi, '[项目链接已隐藏]')
+    .replace(/\bMianIN1205\/MphoneBeta[\w.-]*/gi, '[项目仓库已隐藏]')
+    .replace(/(sk|key|pk)-[A-Za-z0-9_\-]{6,}/gi, '$1-***').replace(/Bearer\s+\S+/gi, 'Bearer ***')
     .replace(/([?&](?:key|api_key|apikey|token|access_token)=)[^&\s"]+/gi, '$1***');
 }
 var errInfoOverlay = document.getElementById('errInfoOverlay');
-var errInfoText = '', errInfoCode = '';
+var errInfoText = '';
 function openErrInfo(d) {
   var fill = function(id, arr) {
     var ul = document.getElementById(id);
     ul.innerHTML = '';
     arr.forEach(function(t) { var li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
   };
-  document.getElementById('errInfoTitle').textContent = d.ex.title;
-  fill('errInfoReasons', d.ex.reasons);
-  fill('errInfoFixes', d.ex.fixes);
-  // 原始报错：时间、状态码、模型、接口（只留域名），原文里的密钥打码
+  document.getElementById('errInfoTitle').textContent = d.summary || errShortLabel(d.err, d.ex);
+  fill('errInfoReasons', d.ex.reasons.slice(0, 1));
+  fill('errInfoFixes', d.ex.fixes.slice(0, 2));
   var host = '';
   try { host = d.ctx.url ? new URL(d.ctx.url).host : ''; } catch (_) {}
-  var raw = String((d.err && d.err.message) || d.err || '');
-  errInfoText = [
-    '时间：' + fmtMsgTime(d.time),
-    '分类：' + d.ex.title,
-    d.err && d.err.status ? '状态码：' + d.err.status : '',
-    d.ctx.model ? '模型：' + d.ctx.model : '',
-    host ? '接口：' + host : '',
-    '原文：' + (typeof redactSecret === 'function' ? redactSecret(raw) : raw)
-  ].filter(Boolean).join('\n');
-  document.getElementById('errInfoRaw').textContent = errInfoText;
-  document.getElementById('errInfoRawWrap').classList.remove('open');
-  // 完整报错代码（单独折叠）：状态行、接口、错误本身、接口返回的原文（JSON 排好版）；连不上时是出错的位置。只把密钥打码，不截断
-  errInfoCode = errFullCode(d);
-  document.getElementById('errInfoCode').textContent = errInfoCode;
-  document.getElementById('errInfoCodeWrap').classList.remove('open');
+  var firstLine = ['时间：' + fmtMsgTime(d.time), d.ctx.model ? '模型：' + d.ctx.model : ''].filter(Boolean).join(' · ');
+  document.getElementById('errInfoContext').textContent = errRedact(firstLine + (host ? '\n接口：' + host : ''));
+  document.getElementById('errInfoRaw').textContent =
+    (d.summary || errShortLabel(d.err, d.ex)) + '：' +
+    errRedact(String(d.err.message || d.err.statusText || '服务未提供报错原文'));
+  errInfoText = errFullCode(d);
+  document.getElementById('errInfoCode').textContent = errInfoText;
+  document.getElementById('errInfoDiagnostics').open = false;
   errInfoOverlay.classList.add('open');
+  errInfoOverlay.querySelector('.err-info-modal').scrollTop = 0;
 }
 function errFullCode(d) {
-  var e = d.err || {}, where = '';
-  try { var u = new URL(e.url || d.ctx.url || ''); where = u.origin + u.pathname; } catch (_) {}
+  var e = d.err || {}, endpoint = '';
+  try {
+    var url = new URL(e.url || (d.ctx && d.ctx.url) || '');
+    if (!/^mianin1205\.github\.io$/i.test(url.hostname)) endpoint = url.origin + url.pathname;
+  } catch (_) {}
   var lines = [];
   if (e.status) lines.push('HTTP ' + e.status + (e.statusText ? ' ' + e.statusText : ''));
-  if (where) lines.push(where);
+  if (endpoint) lines.push(endpoint);
   lines.push((e.name || 'Error') + ': ' + String(e.message || d.err || ''));
   if (e.body != null && String(e.body).trim()) {
     var body = String(e.body);
     try { body = JSON.stringify(JSON.parse(body), null, 2); } catch (_) {}
     lines.push('', body.length > 20000 ? body.slice(0, 20000) + '\n…（太长，后面省略）' : body);
   } else if (e.stack) {
-    lines.push('', String(e.stack).split('\n').slice(0, 10).join('\n'));
+    lines.push('', String(e.stack).split('\n').slice(0, 10).join('\n').replace(/(?:https?:\/\/mianin1205\.github\.io\/MphoneBeta[^\/\s]+\/|https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/(?:before\/|after\/)?)(?=js\/)/gi, ''));
   }
   return errRedact(lines.join('\n'));
 }
-document.getElementById('errInfoRawToggle').addEventListener('click', function() {
-  document.getElementById('errInfoRawWrap').classList.toggle('open');
-});
-document.getElementById('errInfoCodeCopy').addEventListener('click', function() {
-  if (!navigator.clipboard) { showToast('✗ 这里不能复制', 'error'); return; }
-  navigator.clipboard.writeText(errInfoCode).then(function() { showToast('✓ 已复制', 'success'); }, function() { showToast('✗ 复制失败', 'error'); });
-});
-document.getElementById('errInfoCodeToggle').addEventListener('click', function() {
-  document.getElementById('errInfoCodeWrap').classList.toggle('open');
-});
 document.getElementById('errInfoCopy').addEventListener('click', function() {
   if (!navigator.clipboard) { showToast('✗ 这里不能复制', 'error'); return; }
-  navigator.clipboard.writeText(errInfoText + (errInfoCode ? '\n\n—— 完整报错代码 ——\n' + errInfoCode : '')).then(function() { showToast('✓ 已复制', 'success'); }, function() { showToast('✗ 复制失败', 'error'); });
+  navigator.clipboard.writeText(errInfoText).then(function() { showToast('✓ 已复制', 'success'); }, function() { showToast('✗ 复制失败', 'error'); });
 });
 document.getElementById('errInfoClose').addEventListener('click', function() { errInfoOverlay.classList.remove('open'); });
 closeOnBackdrop(errInfoOverlay);
