@@ -111,7 +111,6 @@ const apiPresetSelect = document.getElementById('apiPresetSelect');
 const apiPresetList = document.getElementById('apiPresetList');
 const apiPresetSelectedName = document.getElementById('apiPresetSelectedName');
 var selectedApiPreset = -1;
-const apiPresetApply = document.getElementById('apiPresetApply');
 const apiPresetUpdate = document.getElementById('apiPresetUpdate');
 const apiPresetRename = document.getElementById('apiPresetRename');
 const apiPresetDelete = document.getElementById('apiPresetDelete');
@@ -157,7 +156,7 @@ function renderApiPresets(index) {
   if (index !== undefined) selectedApiPreset = index;
   var preset = apiPresets[selectedApiPreset];
   apiPresetSelectedName.textContent = preset ? preset.name : '选择预设';
-  [apiPresetApply, apiPresetUpdate, apiPresetRename, apiPresetDelete].forEach(function(button) {
+  [apiPresetUpdate, apiPresetRename, apiPresetDelete].forEach(function(button) {
     button.disabled = !preset;
   });
   apiPresetInfo.textContent = preset ? apiPresetSummary(preset) : '';
@@ -173,6 +172,7 @@ function renderApiPresets(index) {
     meta.textContent = apiPresetSummary(item);
     option.append(name, meta);
     option.addEventListener('click', function() {
+      setDraftApiConfig(presetApiConfig(item));
       renderApiPresets(i);
       setApiPresetDrawer('');
       apiPresetSelect.focus();
@@ -260,15 +260,6 @@ apiPresetNameInput.addEventListener('input', function() {
 });
 apiPresetNameForm.addEventListener('keydown', function(event) {
   if (event.key === 'Escape') { event.preventDefault(); closeApiPresetName(); }
-});
-
-apiPresetApply.addEventListener('click', function() {
-  var preset = apiPresets[selectedApiPreset];
-  if (!preset) return;
-  var cfg = presetApiConfig(preset);
-  setDraftApiConfig(cfg);
-  applyApiConfig(readDraftApiConfig());
-  setApiPresetDrawer('');
 });
 
 apiPresetUpdate.addEventListener('click', function() {
