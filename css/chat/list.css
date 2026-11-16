@@ -41,6 +41,7 @@
   touch-action: pan-y;
 }
 .chat-char-card.pinned { background: rgba(255, 236, 240, 0.96); }
+.chat-char-card.pinned:not(.helper) { box-shadow: inset 0 0 11px rgba(221,120,160,.25); }
 /* MianIN 的卡片：粉紫渐变 + 内阴影 + 细白边，和背景、别的卡片分开（用户要的） */
 .chat-char-card.helper {
   background: linear-gradient(135deg, rgba(255, 232, 240, 0.97), rgba(238, 230, 252, 0.97));

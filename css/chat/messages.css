@@ -335,3 +335,22 @@
 #appChatRoom.cr-has-status .chat-room-main-title::after, .cr-whisper-notice::after {
   content: ''; display: inline-block; width: 0; height: 0; margin-left: 5px; vertical-align: 2px;
   border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.5; }
+
+
+.chat-msg-bubble.img-bubble.img-album {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(51vw, 204px); max-width: 100%; gap: 3px;
+  border-radius: 12px; overflow: hidden;
+}
+.chat-msg-bubble.img-bubble.img-album-portraits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.chat-msg-bubble.img-bubble.img-album-landscapes { grid-template-columns: minmax(0, 1fr); width: min(47vw, 182px); }
+.img-album-cell, .img-album-more { min-width: 0; aspect-ratio: 1; }
+.img-album-portraits .img-album-cell { aspect-ratio: 3 / 5; }
+.img-album-landscapes .img-album-cell { aspect-ratio: 16 / 8; }
+.chat-msg-bubble.img-album .img-album-cell img {
+  display: block; width: 100%; height: 100%; max-height: none; object-fit: cover; border-radius: 0;
+}
+.img-album-more {
+  border: 0; background: #f5e4eb; color: #834d63;
+  font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+}

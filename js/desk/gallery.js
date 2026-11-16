@@ -57,7 +57,9 @@ function galleryItems() {
     [c.charAlias, c.charName].forEach(function(n) { if (n) byName[n] = c.id; });
     [[chatHistories[c.id], '聊天'], [dramaHistories[c.id], '剧情']].forEach(function(x) {
       (x[0] || []).forEach(function(m) {
-        if (m.imgSrc && !m.recalled) items.push({ src: m.imgSrc, who: c.id, time: m.time || 0, label: '与 ' + name + ' 的' + x[1] });
+        if (m.imgSrc && !m.recalled) (m.images && m.images.length ? m.images : [{ src: m.imgSrc }]).forEach(function(photo) {
+          items.push({ src: photo.src, who: c.id, time: m.time || 0, label: '与 ' + name + ' 的' + x[1] });
+        });
       });
     });
   });

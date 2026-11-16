@@ -263,7 +263,7 @@ function renderHistMsg(m, list, empty) {
   var r = (m.play && typeof appendPlayMsg === 'function') ? appendPlayMsg(role, m, list, empty)   // 群里的投票 / 抽奖 / 红包（js/chat/group-play.js）
         : (m.file && typeof appendFileMsg === 'function') ? appendFileMsg(role, m, list, empty)
         : (m.textImg && !m.imgSrc && typeof appendTextImgMsg === 'function') ? appendTextImgMsg(role, m, list, empty)
-        : m.imgSrc ? appendImgMsg(role, m.imgSrc, list, empty)
+        : m.imgSrc ? appendImgMsg(role, m.imgSrc, list, empty, m.images)
         : (m.sticker && typeof appendStickerMsg === 'function') ? appendStickerMsg(role, m, list, empty)
         : appendMsg(role, m.content, false, list, empty);
   crRowSpeaker = null;
@@ -538,7 +538,7 @@ function appendQuoteBlock(list, quote, role) {
   return q;
 }
 
-function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl) {
+function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl, images) {
   var list  = targetListEl  || getActiveMsgListEl();
   var empty = targetEmptyEl || getActiveEmptyEl();
   if (empty) empty.style.display = 'none';
@@ -547,10 +547,40 @@ function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl) {
   row.appendChild(createMsgAvatar(role));
   var bubble = document.createElement('div');
   bubble.className = 'chat-msg-bubble img-bubble';
-  var img = document.createElement('img');
-  img.src = imgSrc;
-  img.alt = '图片消息';
-  bubble.appendChild(img);
+  if (Array.isArray(images) && images.length > 1) {
+    var orientation = images.length === 3 && (images.every(function(p) { return p.width < p.height; }) ? 'portraits' :
+      images.every(function(p) { return p.width > p.height; }) ? 'landscapes' : '');
+    bubble.classList.add('img-album');
+    if (orientation) bubble.classList.add('img-album-' + orientation);
+    images.forEach(function(photo, index) {
+      var cell = document.createElement('div');
+      cell.className = 'img-album-cell';
+      cell.hidden = images.length > 4 && index >= 3;
+      var img = document.createElement('img');
+      img.src = photo.src;
+      img.alt = '第 ' + (index + 1) + ' 张图片';
+      cell.appendChild(img);
+      bubble.appendChild(cell);
+    });
+    if (images.length > 4) {
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'img-album-more';
+      more.textContent = '+' + (images.length - 3);
+      more.setAttribute('aria-label', '展开剩余图片');
+      more.addEventListener('click', function(event) {
+        event.stopPropagation();
+        more.remove();
+        bubble.querySelectorAll('.img-album-cell[hidden]').forEach(function(cell) { cell.hidden = false; });
+      });
+      bubble.appendChild(more);
+    }
+  } else {
+    var img = document.createElement('img');
+    img.src = imgSrc;
+    img.alt = '图片消息';
+    bubble.appendChild(img);
+  }
   row.appendChild(bubble);
   list.appendChild(row);
   crStick(list);

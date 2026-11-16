@@ -83,26 +83,31 @@ function sendPickedImage(files) {
   var list = Array.prototype.slice.call(files.length !== undefined ? files : [files], 0, PICK_MAX);
   if (!list.length) return;
   if (files.length > PICK_MAX) showToast('一次最多选 ' + PICK_MAX + ' 张，请确认前 ' + PICK_MAX + ' 张', 'plain');
-  var srcs = [], left = list.length;
+  var photos = [], left = list.length;
   var finish = function() {
     if (--left || !sameRoom()) return;
-    var got = srcs.filter(Boolean);
+    var got = photos.filter(Boolean);
     if (!got.length) { showToast('图片读不出来', 'error'); return; }
-    confirmPickedImage(got, function(chosen) {
-      if (!sameRoom()) { showToast('聊天窗口已切换，请重新选图', 'plain'); return; }
-      var hist = getActiveHistory(openingChatCharIdx), now = Date.now();
-      chosen.forEach(function(src, k) {
-        var im = { role: 'user', content: '[图片消息]', imgSrc: src, time: now + k };
-        if (k === 0 && pendingQuote) { im.quote = pendingQuote; clearQuote(); }
-        hist.push(im);
-        renderHistMsg(im);
-      });
-      saveHistories();
-    });
+    var im = { role: 'user', content: got.length > 1 ? '[图片消息 · ' + got.length + ' 张]' : '[图片消息]', imgSrc: got[0].src, time: Date.now() };
+    if (got.length > 1) im.images = got;
+    if (pendingQuote) { im.quote = pendingQuote; clearQuote(); }
+    getActiveHistory(openingChatCharIdx).push(im);
+    renderHistMsg(im);
+    saveHistories();
   };
   list.forEach(function(file, i) {
     var reader = new FileReader();
-    reader.onload = function(ev) { compressImage(ev.target.result, 1024, function(dataUrl) { srcs[i] = dataUrl; finish(); }); };
+    reader.onload = function(ev) {
+      compressImage(ev.target.result, 1024, function(src) {
+        var img = new Image();
+        img.onload = function() {
+          photos[i] = { src: src, width: img.naturalWidth, height: img.naturalHeight };
+          finish();
+        };
+        img.onerror = finish;
+        img.src = src;
+      });
+    };
     reader.onerror = finish;
     reader.readAsDataURL(file);
   });

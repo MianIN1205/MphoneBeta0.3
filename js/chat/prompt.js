@@ -141,7 +141,7 @@ function estTokens(c) {
   var s = String(c || ''), wide = (s.match(/[⺀-鿿가-힯＀-￯]/g) || []).length;
   return Math.ceil(wide + (s.length - wide) / 4) + 4;
 }
-function msgTokens(m) { return estTokens(msgTextForAI(m)) + (m.imgSrc || m.voice ? 300 : 0); }
+function msgTokens(m) { return estTokens(msgTextForAI(m)) + (m.images && m.images.length ? 300 * m.images.length : (m.imgSrc || m.voice ? 300 : 0)); }
 
 // 另一个窗口发生的事，标明是在哪边发生的（2026-11-11 用户定的：摘要 + 最后六七条原文，不要再带最近十二条互动）
 // · 聊天窗口：剧情更早的经过用每回合那句「前情」当摘要（最多 CROSS_RECAP_MAX 句，不另外请求），加最后 CROSS_SCENE_MSGS 条原文；
@@ -527,7 +527,10 @@ function msgContentForAI(m, rich, char) {
   // 图片前面带一句文字：有些接口（如部分 Gemini 中转）不接受只有图片、没有文字的消息
   if (m.imgSrc && mediaCfg.vision) {
     var parts = [{ type: 'text', text: (m.quote ? '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' : '') + '（我发了一张图片）' }];
-    parts.push({ type: 'image_url', image_url: { url: m.imgSrc } });
+    if (m.images && m.images.length > 1) parts[0].text = parts[0].text.replace('一张图片',' ' + m.images.length + ' 张图片');
+    (m.images && m.images.length ? m.images : [{ src: m.imgSrc }]).forEach(function(photo) {
+      parts.push({ type: 'image_url', image_url: { url: photo.src } });
+    });
     return parts;
   }
   // 「发送音频」模式，或「转成文字」但还没转出文字（比如接口不支持语音识别）时，直接把录音发过去：
