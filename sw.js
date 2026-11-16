@@ -1,9 +1,9 @@
 // 眠花糖机 后台缓存程序（Service Worker）
-// 联网优先：每次都先取最新版本，成功就顺便更新缓存；断网时才用缓存，保证离线也能打开。
+// 首页快速检查更新，已缓存的版本化脚本、样式与图标直接从本地读取。
 // 只处理本站文件，AI / 语音 / 生图等外部接口请求完全不经过这里。
 
 // 文件拆分后 css/、js/ 也要预先缓存；改动这个列表时把版本号加一
-const V = '111';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
+const V = '112';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = SCOPE.pathname === '/' ? 'mphone-v' : 'mphone:' + SCOPE.pathname + ':v';
 const CACHE = CACHE_PREFIX + V;
@@ -56,7 +56,7 @@ self.addEventListener('activate', function (event) {
 // 取文件：网快的时候先拿网上最新的（推了新版本刷新就能看到）；网慢的时候直接用手机里存的，同时在后台悄悄更新。
 // 不开梯子时 github.io 很慢，以前每个文件都先等网络，一百多个文件挨个等，载入特别卡、桌面半天出不来（用户反馈过）。
 // 打开页面时看一眼网速：首页 NET_WAIT 毫秒内拿不到就算网慢，这次打开剩下的文件都先用存的；中途哪个文件超时也切成网慢
-var NET_WAIT = 2500;
+var NET_WAIT = 900;
 var netSlow = false;
 function putCache(req, res) {
   if (res && res.ok && !res.redirected) {
@@ -104,7 +104,7 @@ self.addEventListener('fetch', function (event) {
   if (req.method !== 'GET' || url.origin !== SCOPE.origin || url.pathname.indexOf(SCOPE.pathname) !== 0) return;
   var file = url.pathname.slice(SCOPE.pathname.length);
   if (file && file !== 'index.html' && file !== 'manifest.webmanifest' && !/^(css|js|lib|icons)\//.test(file)) return;
-  if (url.searchParams.get('v') === V && /^(css|js)\//.test(file)) {
+  if ((url.searchParams.has('v') && /^(css|js)\//.test(file)) || /^icons\//.test(file)) {
     event.respondWith(fromCache(req).then(function (hit) { return hit || fromNet(req); }));
     return;
   }
