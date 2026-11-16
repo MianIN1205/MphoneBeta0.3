@@ -223,7 +223,11 @@ function renderQuickPop() {
     var api = charApiPreset(char);
     quickItem('跟随全局', getApiCfg().model || '未选择模型', !api, function() { setQuickField('apiPresetName', ''); });
     apiPresets.forEach(function(p) {
-      quickItem(p.name, p.model || '未选择模型', api === p, function() { setQuickField('apiPresetName', p.name); });
+      var model = p.model || '未选择模型';
+      var temperature = presetApiConfig(p).temp.toFixed(2);
+      var item = quickItem(p.name, model + ' · ♥︎ ' + temperature, api === p, function() { setQuickField('apiPresetName', p.name); });
+      item.classList.add('cr-qb-model-preset');
+      item.querySelector('.cr-qb-item-sub').title = model + ' · 温度 ' + temperature;
     });
     if (!apiPresets.length) crQuickPop.insertAdjacentHTML('beforeend', '<div class="cr-qb-empty">还没有保存的模型预设，可以到主 API 点「另存为」</div>');
   } else if (crQuickOpen === 'preset') {
