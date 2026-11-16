@@ -148,6 +148,8 @@ function sendPickedImage(files) {
           // 抽屉先不收，小菜单从「相册」这个图标上方冒出来（用户要的）；选好了再收
           if (typeof openAlbumPick === 'function') openAlbumPick(this.querySelector('.cr-plus-box') || this);
           else { closeCrPlusPanel(); crAlbumFileInput.value = ''; crAlbumFileInput.click(); }
+        } else if (['通话', '位置', '礼物', '转账'].indexOf(funcName) >= 0) {
+          openPrivatePlus(funcName);
         } else if (funcName === '文件' && typeof openChatFilePicker === 'function') {
           openChatFilePicker();
         } else if (funcName === '查手机' && typeof openPeek === 'function') {

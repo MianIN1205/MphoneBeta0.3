@@ -12,7 +12,7 @@ function stripMsg(m) {
   var o = { role: m.role, content: m.content, imgSrc: m.imgSrc, images: m.images, sticker: m.sticker, status: m.status, statusHtml: m.statusHtml, statusLined: m.statusLined, time: m.time,
             quote: m.quote, recalled: m.recalled, recalledText: m.recalledText, recalledBy: m.recalledBy,
             voice: m.voice, transcript: m.transcript, action: m.action, recap: m.recap, pat: m.pat, patSuffix: m.patSuffix, cal: m.cal,
-            narr: m.narr, note: m.note, noteAI: m.noteAI, think: m.think, errs: m.errs, file: m.file, textImg: m.textImg, photo: m.photo, illus: m.illus, tg: m.tg, speaker: m.speaker, play: m.play, whisperChat: m.whisperChat };
+            narr: m.narr, note: m.note, noteAI: m.noteAI, think: m.think, errs: m.errs, file: m.file, textImg: m.textImg, photo: m.photo, illus: m.illus, tg: m.tg, speaker: m.speaker, play: m.play, whisperChat: m.whisperChat, privateCard: m.privateCard };
   if (m.alts) {
     o.alts = m.alts.map(function(group) {
       return group.map(function(g) { return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, action: g.action, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, speaker: g.speaker,
