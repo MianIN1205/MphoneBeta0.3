@@ -70,7 +70,7 @@
 .mem-badge.tl { background: #f3ecdf; color: #9a7a4a; }
 
 .mem-search {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
+  display: flex; align-items: center; gap: 6px; margin: 0 0 12px;
   padding: 5px 9px 5px 11px; background: #fff8fa;
   border: 1px solid #ecd5dd; border-radius: 12px; color: #865f6d;
 }
@@ -85,19 +85,20 @@
 }
 .mem-month-filter select {
   box-sizing: border-box;
-  min-height: 34px;
+  min-height: 28px;
   max-width: 100%;
-  padding: 4px 9px;
+  padding: 2px 6px;
   border: 1px solid #ead6df;
   border-radius: 9px;
   background: #fbf4f7;
   color: #6b4b58;
   font: inherit;
-  font-size: 14px;
+  font-size: 12px;
 }
 .mem-month-filter select:focus-visible { outline: 2px solid #c48196; outline-offset: 2px; }
+.mem-search > span { font-size: 13px; }
 .mem-search:focus-within { border-color: #c48196; }
-.mem-search input { flex: 1; min-width: 0; min-height: 34px; background: transparent; border: 0; font: inherit; font-size: 16px; color: #5a4249; outline: none; }
+.mem-search input { flex: 1; min-width: 0; min-height: 30px; background: transparent; border: 0; font: inherit; font-size: 14px; color: #5a4249; outline: none; }
 .mem-search button, .mem-recall-link { border: 0; background: transparent; color: #95566d; font: inherit; font-size: 12px; cursor: pointer; min-height: 32px; }
 .mem-recall-link { display: block; margin: 6px auto 0; text-decoration: underline; text-underline-offset: 3px; }
 #memSearchStatus:empty { display: none; }
