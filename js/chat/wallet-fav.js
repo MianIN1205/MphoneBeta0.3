@@ -127,7 +127,7 @@ var favKind = 'all';
 function renderFavs() {
   var list = document.getElementById('favList');
   list.innerHTML = '';
-  var items = loadFavs().filter(function(f) { return favKind === 'all' || f.kind === favKind; });
+  var items = loadFavs().filter(function(f) { return favKind === 'all' || f.kind === favKind || (favKind === 'html' && f.kind === 'status' && !!f.html); });
   if (!items.length) {
     list.innerHTML = '<div class="feed-empty-hint">还没有收藏</div>';
     return;
