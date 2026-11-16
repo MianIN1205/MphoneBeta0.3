@@ -44,7 +44,6 @@ function openMsgCtx(bubble, listId, anchor) {
     // 重新生成：最新一组回复直接重新生成（旧版本留着切换）；更早的回复要先删掉后面的消息
     regen:     !!m && !genHere() && isLatest,
     regenFrom: !!m && !genHere() && !ctxTarget.isUser && !isLatest,
-    delRound:  !!m && !ctxTarget.isUser,
     delete: true, select: !!m, selBelow: !!m, fav: true, copy: true
   };
   msgCtxMenu.querySelectorAll('button').forEach(function(btn) { btn.classList.toggle('hide', !show[btn.dataset.act]); });
@@ -122,8 +121,6 @@ msgCtxMenu.addEventListener('click', function(e) {
     openConfirm('删除这条消息？删除后 TA 也不会再看到', function() { deleteMsg(t); });
   } else if (act === 'regenFrom') {
     regenerateFrom(t.listId, t.msg);
-  } else if (act === 'delRound') {
-    deleteRound(t.listId, t.msg);
   } else if (act === 'select') {
     enterMsgSelect(t.listId, t.row);
   } else if (act === 'selBelow') {

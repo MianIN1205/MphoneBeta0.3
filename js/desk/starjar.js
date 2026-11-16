@@ -94,6 +94,32 @@ onMphoneReady(function() {
 // ---------- 界面：玻璃瓶 ----------
 var sjBody = document.querySelector('#appStarJar .settings-content');
 sjBody.classList.add('sj-body');
+var starJarAuthor = 'all';
+function starAuthorGroup(star) {
+  if (star.anon) return { id: 'anon', label: '匿名' };
+  var character = star.charId && charList.find(function(c) { return c.id === star.charId; });
+  var name = (character && (character.charAlias || character.charName)) || star.name;
+  return { id: star.charId ? 'char:' + star.charId : name ? 'name:' + name : 'unknown', label: name || '未署名' };
+}
+function starJarFilter(container) {
+  var groups = new Map();
+  stars.forEach(function(star) {
+    var author = starAuthorGroup(star);
+    if (!groups.has(author.id)) groups.set(author.id, author.label);
+  });
+  if (starJarAuthor !== 'all' && !groups.has(starJarAuthor)) starJarAuthor = 'all';
+  var label = document.createElement('label'), select = document.createElement('select');
+  label.className = 'sj-author-filter';
+  label.textContent = '折星星的人';
+  select.add(new Option('全部', 'all'));
+  groups.forEach(function(name, id) { if (id !== 'anon') select.add(new Option(name, id)); });
+  if (groups.has('anon')) select.add(new Option('匿名', 'anon'));
+  select.value = starJarAuthor;
+  select.addEventListener('change', function() { starJarAuthor = select.value; renderStarJar(); sjBody.querySelector('.sj-author-filter select').focus(); });
+  label.appendChild(select);
+  container.appendChild(label);
+  return starJarAuthor === 'all' ? stars : stars.filter(function(star) { return starAuthorGroup(star).id === starJarAuthor; });
+}
 function starColor(s) { return s.anon ? STAR_ANON_COLOR : STAR_COLORS[starHash(s.id) % STAR_COLORS.length]; }
 function starSvg(color) {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.7 5.9 6.4.7-4.8 4.4 1.3 6.3L12 16.7l-5.6 3.2 1.3-6.3-4.8-4.4 6.4-.7z" fill="' + color + '" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round"/></svg>';
@@ -107,6 +133,10 @@ function starPilePos(i, n, size) {
 }
 function renderStarJar(dropId) {
   sjBody.innerHTML = '';
+  var controls = document.createElement('div');
+  controls.className = 'sj-foot';
+  var selectedStars = starJarFilter(controls);
+  var visibleStars = selectedStars.filter(function(star) { return !star.displayed; });
   var wrap = document.createElement('div');
   wrap.className = 'sj-wrap';
   wrap.innerHTML = '<div class="sj-sky"></div><div class="sj-jar"><div class="sj-cork"></div><div class="sj-neck"></div><div class="sj-glass"><div class="sj-pile"></div><div class="sj-shine"></div></div><div class="sj-tag"></div></div>';
@@ -119,9 +149,9 @@ function renderStarJar(dropId) {
     wrap.querySelector('.sj-sky').appendChild(tw);
   }
   var pile = wrap.querySelector('.sj-pile');
-  var n = stars.length, size = n > 120 ? 14 : n > 70 ? 17 : n > 36 ? 20 : 24;
+  var n = visibleStars.length, size = n > 120 ? 14 : n > 70 ? 17 : n > 36 ? 20 : 24;
   // 最多画最新的 220 颗，更早的还在，抽一颗时也能抽到
-  var shown = stars.slice(-220);
+  var shown = visibleStars.slice(-220);
   var bodies = [];
   shown.forEach(function(s, i) {
     var h = starHash(s.id), p = starPilePos(i, shown.length, size);
@@ -144,26 +174,47 @@ function renderStarJar(dropId) {
     bodies.push(b);
   });
   sjPhysStart(pile, bodies);
-  var unread = stars.filter(function(s) { return !s.read; }).length;
+  var unread = visibleStars.filter(function(s) { return !s.read; }).length;
   wrap.querySelector('.sj-tag').textContent = n ? n + ' 颗' : '';
-  var card = document.createElement('div');
-  card.className = 'sj-foot';
   var tip = document.createElement('div');
   tip.className = 'sj-tip';
-  tip.textContent = !n ? '瓶子还空着。TA 们想你的时候，会悄悄叠一颗星星放进来' : unread ? '有 ' + unread + ' 颗新的星星在发光，点一颗看看' : '点一颗星星，看看 TA 写了什么';
-  card.appendChild(tip);
+  tip.textContent = !n ? (stars.length ? '这组没有留在瓶里的星星' : '瓶子还空着。TA 们想你的时候，会悄悄叠一颗星星放进来') : unread ? '有 ' + unread + ' 颗新的星星在发光，点一颗看看' : '点一颗星星，看看 TA 写了什么';
+  tip.classList.toggle('is-glowing', unread > 0);
+  wrap.appendChild(tip);
   if (n) {
     var btn = document.createElement('button');
     btn.className = 'mine-acc-btn sj-pick';
     btn.textContent = '抽一颗';
     btn.addEventListener('click', function() {
-      var pool = stars.filter(function(s) { return !s.read; });
-      if (!pool.length) pool = stars;
+      var pool = visibleStars.filter(function(s) { return !s.read; });
+      if (!pool.length) pool = visibleStars;
       openStarNote(pool[Math.floor(Math.random() * pool.length)]);
     });
-    card.appendChild(btn);
+    controls.appendChild(btn);
   }
-  sjBody.appendChild(card);
+  sjBody.appendChild(controls);
+  renderDisplayedStars(selectedStars);
+}
+function renderDisplayedStars(selectedStars) {
+  var displayed = selectedStars.filter(function(star) { return star.displayed; });
+  if (!displayed.length) return;
+  var shelf = document.createElement('section'), heading = document.createElement('div'), grid = document.createElement('div');
+  shelf.className = 'sj-display';
+  heading.className = 'sj-display-heading';
+  heading.textContent = '展示的星星';
+  grid.className = 'sj-display-grid';
+  displayed.forEach(function(star) {
+    var tile = document.createElement('button'), name = document.createElement('span');
+    tile.type = 'button';
+    tile.className = 'sj-display-star';
+    tile.innerHTML = starSvg(starColor(star));
+    name.textContent = starAuthorGroup(star).label;
+    tile.appendChild(name);
+    tile.onclick = function() { openStarNote(star); };
+    grid.appendChild(tile);
+  });
+  shelf.append(heading, grid);
+  sjBody.appendChild(shelf);
 }
 // ---------- 星星跟着重力滑、摇一摇会晃（手机有陀螺仪时；没有的话在瓶子上左右划也能摇） ----------
 // 一个很小的二维物理：星星当成小圆，受重力、互相挤、碰瓶壁（瓶子四角是圆的）；都停稳了就歇着，不一直耗电
@@ -306,6 +357,8 @@ window.addEventListener('devicemotion', function(e) {
 var starNoteCur = null;
 function openStarNote(s) {
   starNoteCur = s;
+  document.getElementById('starNoteShow').disabled = !!s.displayed;
+  document.getElementById('starNoteFav').disabled = isFavRef('star:' + s.id);
   var box = document.getElementById('starNote');
   box.querySelector('.star-note-text').textContent = s.text;
   var d = new Date(s.at);
@@ -324,12 +377,27 @@ function closeStarNote() {
   starNoteCur = null;
   renderStarJar();
 }
-document.getElementById('starNoteClose').addEventListener('click', closeStarNote);
+document.getElementById('starNoteClose').addEventListener('click', function() {
+  if (starNoteCur && starNoteCur.displayed) { delete starNoteCur.displayed; saveStars(); }
+  closeStarNote();
+});
+document.getElementById('starNoteFav').addEventListener('click', function() {
+  var star = starNoteCur;
+  if (!star) return;
+  addFav({ kind: 'text', refId: 'star:' + star.id, text: star.text, source: '星星瓶', author: starAuthorGroup(star).label, time: star.at });
+  this.disabled = true;
+});
+document.getElementById('starNoteShow').addEventListener('click', function() {
+  if (!starNoteCur) return;
+  starNoteCur.displayed = true;
+  saveStars();
+  closeStarNote();
+});
 closeOnBackdrop(document.getElementById('starNoteOverlay'), closeStarNote);
 document.getElementById('starNoteDel').addEventListener('click', function() {
   var s = starNoteCur;
   if (!s) return;
-  openConfirm('把这颗星星拿出瓶子？拿出来就没有了', function() {
+  openConfirm('丢掉这颗星星？', function() {
     stars = stars.filter(function(x) { return x !== s; });
     saveStars();
     closeStarNote();
