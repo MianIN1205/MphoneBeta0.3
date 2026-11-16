@@ -44,11 +44,38 @@ function renderMemHome() {
 var memSearch = document.getElementById('memSearch');
 var memSearchClear = document.getElementById('memSearchClear');
 var memSearchStatus = document.getElementById('memSearchStatus');
+var memSearchMonth = document.getElementById('memSearchMonth');
+var memSearchYear = document.getElementById('memSearchYear');
+for (var memMonth = 1; memMonth <= 12; memMonth++) {
+  memSearchMonth.add(new Option(memMonth + '月', String(memMonth).padStart(2, '0')));
+}
+[memSearchYear, memSearchMonth].forEach(function(select) {
+  select.addEventListener('change', renderMemLib);
+});
+function memUpdateFilterYears(memories) {
+  var selected = memSearchYear.value;
+  var years = new Set();
+  memories.forEach(function(m) {
+    if (m.when && m.whenPrecision !== 'before') years.add(new Date(m.when).getFullYear());
+  });
+  memSearchYear.options.length = 1;
+  Array.from(years).sort(function(a, b) { return b - a; }).forEach(function(year) {
+    memSearchYear.add(new Option(year + '年', String(year)));
+  });
+  memSearchYear.value = years.has(Number(selected)) ? selected : '';
+}
+function memMatchesDate(memory, year, month) {
+  if (!year && !month) return true;
+  if (!memory.when || memory.whenPrecision === 'before') return false;
+  var date = new Date(memory.when);
+  return (!year || date.getFullYear() === Number(year)) &&
+    (!month || (memory.whenPrecision !== 'year' && date.getMonth() + 1 === Number(month)));
+}
 function memSearchTokens(value) {
   return String(value || '').normalize('NFKC').toLowerCase().trim().split(/\s+/).filter(Boolean);
 }
 function openMemDetail(id) {
-  if (memLibChar !== id) { memSearch.value = ''; memLibEmo = ''; }
+  if (memLibChar !== id) { memSearch.value = ''; memSearchYear.value = ''; memSearchMonth.value = ''; memLibEmo = ''; }
   memLibChar = id;
   document.getElementById('memHome').style.display = 'none';
   document.getElementById('memDetail').style.display = '';
@@ -112,17 +139,20 @@ function appendMemPage() {
 memLoadMore.addEventListener('click', appendMemPage);
 function renderMemResults(char, memories) {
   var box = document.getElementById('memList'), terms = memSearchTokens(memSearch.value);
-  var searching = terms.length > 0;
+  memUpdateFilterYears(memories);
+  var year = memSearchYear.value, month = memSearchMonth.value;
+  var searching = terms.length > 0 || !!year || !!month;
   box.textContent = '';
   memPage = null;
   memLoadMore.hidden = true;
-  memSearchClear.hidden = !searching;
+  memSearchClear.hidden = !terms.length;
   document.getElementById('memOverview').hidden = searching;
   var emoRow = document.getElementById('memEmoFilter');
   emoRow.hidden = searching;
   memSearchStatus.textContent = '';
   if (searching) {
     var hits = memories.map(function(m) {
+      if (!memMatchesDate(m, year, month)) return null;
       var body = String(m.text || '').normalize('NFKC').toLowerCase();
       var cues = (m.cues || []).join(' ').normalize('NFKC').toLowerCase();
       if (!terms.every(function(t) { return body.includes(t) || cues.includes(t); })) return null;

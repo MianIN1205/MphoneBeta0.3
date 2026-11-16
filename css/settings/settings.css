@@ -479,6 +479,15 @@ textarea.field-input { resize: vertical; font-family: inherit; line-height: 1.5;
   background: transparent;
   overflow-wrap: anywhere;
 }
+.api-preset-list button > :first-child {
+  color: #765c68;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.api-preset-list button[aria-pressed="true"] > :first-child {
+  color: #59414e;
+  font-weight: 600;
+}
 .api-preset-list button + button { border-top: 1px solid rgba(0,0,0,0.045); }
 .api-preset-list button[aria-pressed="true"], .api-preset-list button:active { background: #faedf3; }
 #settingsScreen .api-preset-list .auto-hint { margin: 0; }
