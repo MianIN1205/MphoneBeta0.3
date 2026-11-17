@@ -42,7 +42,16 @@ function replyTakeTags(char, text) {
 function commitAssistantReply(hist, raw, list, empty) {
   var status = '', headStatus = '', recap = '', patBack = false;
   var th = takeThink(raw);   // 思维链：摘出来存在第一条上，不显示成气泡（见 js/chat/prompt.js）
-  raw = th.text;
+  var outFiles = [];
+  raw = th.text.replace(/<文件\s+名字\s*=\s*["“]([^"”<>\n]{1,60})["”]\s*>([\s\S]*?)<\/文件>/g, function(_, name, body) {
+    var file = fileFromText(name, body);
+    if (file) outFiles.push(file);
+    return '';
+  }).replace(/<长文本>([\s\S]*?)<\/长文本>/g, function(_, body) {
+    var file = fileFromText('长文本.txt', body);
+    if (file) outFiles.push(file);
+    return '';
+  });
   var st = takeStatus(raw);
   raw = st.text; status = st.status;
   // 状态栏：角色照规则写，用正则认出来（聊天窗口；剧情窗口开了「也写状态栏」时也认）
@@ -84,10 +93,6 @@ function commitAssistantReply(hist, raw, list, empty) {
   // 剧情配图：<配图>这一幕的画面</配图> 拿出来，回复后面单独一条（设置里剧情配图选了生图才会写）
   var illus = '', isDramaHist = !!(rc && dramaHistories[rc.id] === hist);
   raw = raw.replace(/<配图>([\s\S]*?)(<\/配图>|$)/g, function(_, s) { illus = s.replace(/\s+/g, ' ').trim(); return ''; });
-  // MianIN 发文件：<文件 名字="xx.css">内容</文件> 拆成单独一条文件消息，点开能复制、保存（js/chat/file-send.js，用户要的）
-  var outFiles = [];
-  if (rc && typeof isAssistantOn === 'function' && isAssistantOn(rc) && typeof fileFromText === 'function')
-    raw = raw.replace(/<文件\s+名字\s*=\s*["“]([^"”<>\n]{1,60})["”]\s*>([\s\S]*?)(<\/文件>|$)/g, function(_, n, t) { var f = fileFromText(n, t); if (f) outFiles.push(f); return ''; });
   var parts = raw.split(/\n?\s*\|\|\|\s*\n?/).map(function(p) { return p.trim(); }).filter(Boolean);
   // 聊天窗口：角色发的照片 <照片>画面</照片> 拆成单独一条（js/chat/img-use.js）
   if (rc && chatHistories[rc.id] === hist && typeof photoSplitParts === 'function') parts = photoSplitParts(parts, hist);

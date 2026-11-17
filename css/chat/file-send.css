@@ -75,3 +75,5 @@
 .pick-check { cursor: pointer; padding: 0; position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #fff; background: rgba(0, 0, 0, 0.18); box-sizing: border-box; }
 .pick-cell.on .pick-check { background: #E58FA3; }
 .pick-cell.on .pick-check::after { content: ''; position: absolute; left: 6px; top: 2px; width: 4px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+.file-html-preview { display: block; width: 100%; height: min(57vh, 480px); border: 0; border-radius: 8px; background: #fff; }

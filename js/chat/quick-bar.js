@@ -197,7 +197,7 @@ document.getElementById('statusImportFile').addEventListener('change', function(
   var file = this.files && this.files[0];
   if (!file) return;
   file.text().then(function(text) {
-    var list = statusRegexScripts(JSON.parse(text.replace(/^\uFEFF/, '')));
+    var list = statusRegexScripts(parseImportedJson(text));
     // 有好几条时，挑替换成 HTML 的、最长的那条（一般就是状态栏本体）
     var pick = list.filter(function(r) { return /<[a-z]/i.test(r.replaceString); }).sort(function(a, b) { return b.replaceString.length - a.replaceString.length; })[0] || list[0];
     if (!pick) { showToast('✗ 这个文件里没找到酒馆正则', 'error'); return; }

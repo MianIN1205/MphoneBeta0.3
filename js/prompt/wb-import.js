@@ -58,7 +58,7 @@ document.getElementById('wbImportBtn').addEventListener('click', function(e) {
       read = file.arrayBuffer().then(function(buf) {
         var s = typeof readPngCard === 'function' ? readPngCard(buf) : null;
         if (!s) throw new Error('这张图里没有角色卡');
-        return wbImpFromJson(JSON.parse(s), file.name);
+        return wbImpFromJson(parseImportedJson(s), file.name);
       });
     } else {
       read = file.slice(0, 2).arrayBuffer().then(function(b) {
@@ -76,7 +76,7 @@ document.getElementById('wbImportBtn').addEventListener('click', function(e) {
             return Object.keys(by).map(function(k) { return { name: k, entries: by[k] }; });
           });
         }
-        return file.text().then(function(t) { return wbImpFromJson(JSON.parse(t.replace(/^﻿/, '')), file.name); });
+        return file.text().then(function(t) { return wbImpFromJson(parseImportedJson(t), file.name); });
       });
     }
     read.then(function(groups) {

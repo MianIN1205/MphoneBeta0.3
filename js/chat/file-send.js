@@ -126,17 +126,34 @@ function appendFileMsg(role, m, list, empty) {
 }
 var fileViewOverlay = document.getElementById('fileViewOverlay');
 var fileViewing = null;
+var htmlFileFrame = null;
+function closeHtmlFileFrame() {
+  if (htmlFileFrame) htmlFileFrame.remove();
+  htmlFileFrame = null;
+}
+function previewHtmlFile(file, body) {
+  var frame = document.createElement('iframe');
+  frame.title = file.name || '互动网页';
+  frame.className = 'file-html-preview';
+  frame.setAttribute('sandbox', 'allow-scripts');
+  frame.srcdoc = '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; media-src data: blob:; font-src data:; form-action \'none\'; base-uri \'none\'">' + file.text;
+  body.replaceChildren(frame);
+  htmlFileFrame = frame;
+}
 function openFileView(m) {
   var f = m.file || {};
+  closeHtmlFileFrame();
   fileViewing = f;
   document.getElementById('fileViewTitle').textContent = f.name || '文件';
   document.getElementById('fileViewSub').textContent = [fileSizeText(f.size), (f.text || '').length + ' 字', f.cut ? '太长了，只存了前面一部分' : ''].filter(Boolean).join(' · ');
   var body = document.getElementById('fileViewBody');
   body.textContent = f.text || '';
+  if (/^html?$/i.test(f.ext || '') && f.text) previewHtmlFile(f, body);
   body.scrollTop = 0;
   fileViewOverlay.classList.add('open');
 }
-document.getElementById('fileViewClose').addEventListener('click', function() { fileViewOverlay.classList.remove('open'); });
+document.getElementById('fileViewClose').addEventListener('click', function() { closeHtmlFileFrame(); fileViewOverlay.classList.remove('open'); });
 // 保存成文件（MianIN 发来的 CSS、世界书这些，用户要能直接存下来）
 document.getElementById('fileViewSave').addEventListener('click', function() {
   if (!fileViewing) return;
@@ -146,7 +163,7 @@ document.getElementById('fileViewCopy').addEventListener('click', function() {
   if (!fileViewing || !navigator.clipboard) { showToast('✗ 这里不能复制', 'error'); return; }
   navigator.clipboard.writeText(fileViewing.text || '').then(function() { showToast('✓ 已复制', 'success'); }, function() { showToast('✗ 复制失败', 'error'); });
 });
-closeOnBackdrop(fileViewOverlay);
+closeOnBackdrop(fileViewOverlay, closeHtmlFileFrame);
 
 // =============================================
 // 发给 AI：记录里那条只是个标记，全文另外放一段（新发的优先，超出预算的这次不带）

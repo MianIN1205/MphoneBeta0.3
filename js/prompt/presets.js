@@ -533,7 +533,7 @@ stPresetImportInput.addEventListener('change', function() {
   var file = this.files && this.files[0];
   if (!file) return;
   file.text().then(function(text) {
-    var preset = stPresetFromJson(JSON.parse(text), file.name.replace(/\.json$/i, '').slice(0, 24) || '导入的预设');
+    var preset = stPresetFromJson(parseImportedJson(text), file.name.replace(/\.json$/i, '').slice(0, 24) || '导入的预设');
     stPresets.push(preset);
     stActivePresetIdx = stPresets.length - 1;
     saveStPresetsToStorage();

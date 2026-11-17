@@ -428,3 +428,13 @@ function mountPresetDrawer(before, o) {
   box.refresh();
   return box;
 }
+
+function parseImportedJson(text) {
+  var source = String(text || '').trim();
+  var fenced = source.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i);
+  if (fenced) source = fenced[1].trim();
+  var result = JSON.parse(source);
+  if (typeof result === 'string' && /^(?:\{|\[)/.test(result.trim())) result = JSON.parse(result.trim());
+  if (!result || typeof result !== 'object') throw new SyntaxError('文件中没有 JSON 对象或数组');
+  return result;
+}

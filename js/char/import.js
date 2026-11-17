@@ -38,7 +38,7 @@ function importCharFile(file) {
     });
   }
   if (/\.json$/.test(name)) {
-    return file.text().then(function(t) { return cardToDraft(JSON.parse(t), ''); });
+    return file.text().then(function(t) { return cardToDraft(parseImportedJson(t), ''); });
   }
   if (/\.png$/.test(name)) {
     return file.arrayBuffer().then(function(buf) {
@@ -48,7 +48,7 @@ function importCharFile(file) {
         var r = new FileReader();
         r.onload = function(ev) { compressImage(ev.target.result, 512, resolve); };
         r.readAsDataURL(file);
-      }).then(function(avatar) { return cardToDraft(JSON.parse(json), avatar); });
+      }).then(function(avatar) { return cardToDraft(parseImportedJson(json), avatar); });
     });
   }
   return Promise.reject(new Error('只支持 PNG / JSON / DOCX，或者小手机的完整备份（.ee）'));

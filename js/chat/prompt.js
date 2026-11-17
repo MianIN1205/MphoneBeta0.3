@@ -475,6 +475,7 @@ function buildMsgs(idx, histOverride) {
   // 聊天和剧情的记忆互通：带上另一边的前情（剧情窗口还带聊天的记忆总结），再说明现在在哪个空间
   var cross = crossSceneContext(idx, isDrama);
   if (cross) msgs.push({ role: 'system', content: cross });
+  msgs.push({ role: 'system', content: '需要发给对方可完整复制的长文本时，用 <长文本>原文</长文本>，不要在其中使用聊天分隔符。需要发送文件时，用 <文件 名字="文件名.txt">全文</文件>。HTML 小网页可用 .html 文件，写成自包含的 HTML、CSS 和 JavaScript。' });
   if (typeof scenePrompt === 'function') msgs.push({ role: 'system', content: scenePrompt(isDrama) });
   // 聊天窗口：现在几点、隔了多久、电量、纪念日和日程
   var realSys = isChatHist ? realWorldContext(char, fullHistory) : '';

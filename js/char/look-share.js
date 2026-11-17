@@ -65,7 +65,7 @@ document.getElementById('lookImportFile').addEventListener('change', function() 
   var file = this.files && this.files[0];
   if (!file) return;
   file.text().then(function(t) {
-    var d = JSON.parse(t.replace(/^﻿/, ''));
+    var d = parseImportedJson(t);
     if (!d || d.app !== 'mphone' || d.type !== 'look') throw new Error('not look');
     openLookShare('import', d);
   }).catch(function() { showToast('✗ 这不是眠花糖机的美化文件', 'error'); });
