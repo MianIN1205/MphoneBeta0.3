@@ -216,10 +216,13 @@ function mcpActiveTools() {
 // 模型要用工具时：先按设置问一下，再调用
 var mcpAskOverlay = document.getElementById('mcpAskOverlay');
 var mcpAskResolve = null;
-function mcpAsk(title, detail) {
+var mcpAskTemporary = document.getElementById('mcpAskTemporary');
+var mcpLease = null;
+function mcpAsk(title, detail, temporary) {
   return new Promise(function(resolve) {
     if (mcpAskResolve) mcpAskResolve(false);
     mcpAskResolve = resolve;
+    mcpAskTemporary.hidden = !temporary;
     document.getElementById('mcpAskTitle').textContent = title;
     document.getElementById('mcpAskText').textContent = detail;
     mcpAskOverlay.classList.add('open');
@@ -232,17 +235,24 @@ function mcpAskDone(ok) {
   if (r) r(ok);
 }
 document.getElementById('mcpAskYes').addEventListener('click', function() { mcpAskDone(true); });
+mcpAskTemporary.addEventListener('click', function() { if (!mcpAskTemporary.hidden) mcpAskDone('temporary'); });
 document.getElementById('mcpAskNo').addEventListener('click', function() { mcpAskDone(false); });
 
-function mcpCallFromLLM(name, args) {
+function mcpCallFromLLM(name, args, scope) {
   var hit = mcpToolMap[name];
   if (!hit) return Promise.resolve('没有这个工具：' + name);
   var detail = '工具：' + (hit.tool.title || hit.tool.name) + '（' + (hit.builtin ? '内置' : hit.server.name) + '）\n参数：' + JSON.stringify(args || {}, null, 1).slice(0, 600);
   // 外卖的下单 / 取消单不管「先问我」开没开，都要先问（花的是真钱）
   var mustAsk = hit.server && hit.server.takeout && MCP_TAKEOUT_ASK.test(hit.tool.name);
-  var asked = mcpCfg.confirm || mustAsk ? mcpAsk(mustAsk ? '角色想帮你下单' : '角色想使用工具', detail) : Promise.resolve(true);
+  // 只信任已知的内置只读工具。读网页可在同一聊天中换链接，其余工具仍绑定具体参数。
+  var eligible = !!(scope && hit.builtin && ['read_url', 'weather', 'lyrics', 'calculate'].indexOf(hit.tool.name) >= 0);
+  var key = eligible ? JSON.stringify([scope, hit.tool.name, hit.tool.name === 'read_url' ? null : (args || {})]) : '';
+  var allowed = !!(key && mcpLease && mcpLease.key === key && Date.now() < mcpLease.until);
+  var needsAsk = mustAsk || (mcpCfg.confirm && !allowed);
+  var asked = needsAsk ? mcpAsk(mustAsk ? '角色想帮你下单' : '角色想使用工具', detail, eligible && !mustAsk) : Promise.resolve(true);
   return asked.then(function(ok) {
     if (!ok) return '用户没有同意这次工具调用，请不用工具直接回答。';
+    if (ok === 'temporary' && key && !mustAsk) mcpLease = { key: key, until: Date.now() + 10 * 60000 };
     var run = hit.builtin ? mcpBuiltinCall(hit.tool.name, args) : mcpCallTool(hit.server, hit.tool.name, args);
     return hit.server && hit.server.takeout ? run.then(function(text) { mcpTakeoutPayLink(hit.server, text); return text; }) : run;
   });
@@ -254,7 +264,7 @@ var mcpConfirmInput = document.getElementById('mcpConfirm');
 mcpOnInput.checked = mcpCfg.on;
 mcpConfirmInput.checked = mcpCfg.confirm;
 mcpOnInput.addEventListener('change', function() { mcpCfg.on = this.checked; saveMcpServers(); });
-mcpConfirmInput.addEventListener('change', function() { mcpCfg.confirm = this.checked; saveMcpServers(); });
+mcpConfirmInput.addEventListener('change', function() { mcpCfg.confirm = this.checked; mcpLease = null; saveMcpServers(); });
 
 function renderMcpServers() {
   if (typeof renderMcpTakeout === 'function') renderMcpTakeout();

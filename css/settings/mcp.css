@@ -15,3 +15,8 @@
 /* 外卖：总开关关着时整组变淡 */
 .mcp-takeout-off .mcp-server-card { opacity: 0.55; }
 .mcp-takeout-desc { margin: 0 0 6px; }
+
+#mcpAskOverlay .mcp-ask-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+#mcpAskOverlay .mcp-ask-actions button { flex: 1 0 auto; min-width: 0; padding-inline: 7px; font-size: 12px; }
+#mcpAskOverlay .mcp-ask-actions button[hidden] { display: none; }
+#mcpAskTemporary { background: #f9e8ef; color: #815266; border: 1px solid #ead0db; }

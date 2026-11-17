@@ -461,7 +461,7 @@ function sendMsg(userText, requestOnly, onDone) {
     signal: ctrl.signal,
     cfg: cfg,
     tools: mcpTools,
-    callTool: mcpTools.length ? mcpCallFromLLM : null,
+    callTool: mcpTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey); } : null,
     toolLabel: function(name) { var hit = mcpToolMap[name]; return hit ? (hit.tool.title || hit.tool.name) : name; },
     onStatus: function(text) { typing.bubble.textContent = text; scrollLive(); },
     onText: function(full) {
