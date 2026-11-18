@@ -19,7 +19,7 @@ var crRowSpeaker = null;   // 群聊里正在画的这条是哪个成员说的�
 // 本来就在最底下就照常跟着滚。list._away 只在用户自己滚动时更新（离底部超过 150px 算翻上去了）
 function crStick(list) {
   if (!list || list._needBottom) return;
-  if (!list._away) list.scrollTop = list.scrollHeight;
+  if (!list._away && !(list._newRows && list._newRows.length)) list.scrollTop = list.scrollHeight;
 }
 function crPill(list) {
   if (!list._pill) {
@@ -34,9 +34,12 @@ function crPill(list) {
 function crPillReset(list) { list._newRows = []; if (list._pill) list._pill.classList.remove('show'); }
 function crPillPaint(list) {
   list._newRows = (list._newRows || []).filter(function(r) { return r.parentNode === list && r.style.display !== 'none'; });
-  var n = list._newRows.length, p = crPill(list);
+  var bottom = list.getBoundingClientRect().top + list.clientTop + list.clientHeight;
+  var n = list._newRows.filter(function(row) { return row.getBoundingClientRect().top >= bottom - 1; }).length;
+  if (!n && !list._pill) return;
+  var p = crPill(list);
   p.textContent = '↓ ' + n + ' 条新消息';
-  p.classList.toggle('show', n > 0 && list._away && list.offsetParent !== null);
+  p.classList.toggle('show', n > 0 && list.offsetParent !== null);
 }
 ['chatMsgList', 'dramaMsgList'].forEach(function(id) {
   var list = document.getElementById(id);
@@ -44,17 +47,19 @@ function crPillPaint(list) {
   list.addEventListener('scroll', function() {
     if (list.clientHeight !== list._h) return;   // 列表刚变高 / 变矮（键盘、抽屉），交给下面的 ResizeObserver
     list._away = list.scrollHeight - list.scrollTop - list.clientHeight > 150;
-    if (!list._away) crPillReset(list);
+    if (list.scrollHeight - list.scrollTop - list.clientHeight <= 2) crPillReset(list);
+    else if (list._newRows && list._newRows.length) crPillPaint(list);
   });
   // 键盘弹出、抽屉打开时列表变矮：本来在最底下就接着贴在最底下（用户反馈过要手动往下滑才看得到最新的）
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function() {
     if (list.clientHeight === list._h) return;
     list._h = list.clientHeight;
-    if (!list._away) list.scrollTop = list.scrollHeight;
+    if (!list._away && !(list._newRows && list._newRows.length)) list.scrollTop = list.scrollHeight;
+    if (list._newRows && list._newRows.length) crPillPaint(list);
   }).observe(list);
   // 翻上去的时候新来的消息（正在输入的小点不算）记下来，数出有几条
   new MutationObserver(function(ms) {
-    if (!list._away) return;
+    if (!list._away && !(list._newRows && list._newRows.length)) return;
     ms.forEach(function(m) { Array.prototype.forEach.call(m.addedNodes, function(n) {
       if (n.classList && n.classList.contains('chat-msg-row') && !n.querySelector('.typing-dots')) (list._newRows = list._newRows || []).push(n);
     }); });
