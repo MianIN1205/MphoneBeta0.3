@@ -61,7 +61,7 @@ function crPillPaint(list) {
   new MutationObserver(function(ms) {
     if (!list._away && !(list._newRows && list._newRows.length)) return;
     ms.forEach(function(m) { Array.prototype.forEach.call(m.addedNodes, function(n) {
-      if (n.classList && n.classList.contains('chat-msg-row') && !n.querySelector('.typing-dots')) (list._newRows = list._newRows || []).push(n);
+      if (n.classList && n.classList.contains('chat-msg-row') && !n.classList.contains('cr-typing-row')) (list._newRows = list._newRows || []).push(n);
     }); });
     crPillPaint(list);
   }).observe(list, { childList: true });
@@ -73,6 +73,7 @@ function appendMsg(role, content, isTyping, targetListEl, targetEmptyEl) {
   if (empty) empty.style.display = 'none';
   var row = document.createElement('div');
   row.className = 'chat-msg-row ' + (role === 'user' ? 'user' : 'ai');
+  if (isTyping) row.classList.add('cr-typing-row');
   row.appendChild(createMsgAvatar(role));
   var bubble = document.createElement('div');
   bubble.className = 'chat-msg-bubble';
@@ -252,6 +253,8 @@ function renderHistMsg(m, list, empty) {
   }
   var thinkBar = m.think && m.role === 'assistant' ? renderThinkBar(m, list) : null;
   if (m.status && list.id === 'chatMsgList') appChatRoom.classList.add('cr-has-status');   // 第一条状态栏来了，名字旁边的小箭头跟着出来
+  var toolLead = m.mcpLead && renderMcpNotice(m.mcpLead);
+  if (toolLead) list.appendChild(toolLead);
   if (m.recalled && !m._flash) return renderRecallNotice(m, list, empty);
   if (m.pat || m.note) return renderPatNotice(m, list, empty);
   if (m.whisperChat && typeof renderWhisperNotice === 'function') return renderWhisperNotice(m, list, empty);   // 群里的悄悄话：居中一行，点开看（js/chat/group.js）
@@ -274,6 +277,7 @@ function renderHistMsg(m, list, empty) {
   crRowSpeaker = null;
   r.row._msg = m;
   r.row._extras = thinkBar ? [thinkBar] : [];
+  if (toolLead) r.row._mcpNotes = [toolLead];
   // 群聊：换了一个人说话时，头像旁边写上名字（js/chat/group.js）
   if (role === 'ai' && m.speaker) {
     var prevRow = r.row.previousElementSibling;
@@ -305,6 +309,45 @@ function renderHistMsg(m, list, empty) {
   return r.row;
 }
 
+// 工具记录作为这一轮的附注，正文和参数内容都按纯文本展示。
+function renderMcpNotice(run, notice) {
+  if (!notice) {
+    notice = document.createElement('details');
+    notice.className = 'cr-mcp-notice';
+    notice.append(document.createElement('summary'), document.createElement('div'));
+    notice.children[1].className = 'cr-mcp-detail';
+    notice._mcpRun = run;
+  }
+  var labels = { done: '已完成', denied: '未授权', failed: '失败' };
+  var items = run.entries;
+  var name = items.length === 1 ? items[0].tool + ' · ' + labels[items[0].state] : items.length + ' 次调用';
+  notice.firstElementChild.textContent = '工具 · ' + name;
+  var body = notice.children[1];
+  var from = body.children.length;
+  items.slice(from).forEach(function(item) {
+    var entry = document.createElement('div');
+    entry.className = 'cr-mcp-entry';
+    var title = document.createElement('strong');
+    title.textContent = item.tool;
+    var sub = document.createElement('div');
+    sub.className = 'cr-mcp-meta';
+    sub.textContent = [item.provider, labels[item.state]].filter(Boolean).join(' · ');
+    entry.append(title, sub);
+    [['调用参数', item.params], ['结果预览', item.result]].forEach(function(field) {
+      if (!field[1]) return;
+      var label = document.createElement('div');
+      label.className = 'cr-mcp-field';
+      label.textContent = field[0];
+      var value = document.createElement('div');
+      value.className = 'cr-mcp-value';
+      value.textContent = field[1];
+      entry.append(label, value);
+    });
+    body.appendChild(entry);
+  });
+  return notice;
+}
+
 // 聊天窗口：双方各自连着发的最后一条下面写一个小时间。中间隔了时间分隔、撤回、拍一拍、操作卡片也算新的一段。
 // 消息列表一有变化就重新摆一遍（只动时间这一行）
 function refreshMsgStamps(list) {
@@ -328,7 +371,7 @@ function refreshMsgStamps(list) {
       if (prev && (broken || prev.classList.contains('user') !== el.classList.contains('user') || (prev._msg && prev._msg.speaker) !== (el._msg && el._msg.speaker))) stamp(prev);   // 群里换了人也算新的一段
       prev = el;
       broken = false;
-    } else if (el.matches('.cr-time-sep, .cr-recall-notice, .cr-action-card, .cr-cal-card')) {
+    } else if (el.matches('.cr-time-sep, .cr-recall-notice, .cr-action-card, .cr-cal-card, .cr-mcp-notice')) {
       broken = true;
     }
   });
@@ -380,7 +423,7 @@ function trailingReplyGroup(hist) {
 
 function cloneGroup(group) {
   return group.map(function(g) {
-    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think,
+    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns,
              recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy,
              action: g.action ? JSON.parse(JSON.stringify(g.action)) : undefined };
   });

@@ -39,7 +39,7 @@ function replyTakeTags(char, text) {
   return text;
 }
 
-function commitAssistantReply(hist, raw, list, empty) {
+function commitAssistantReply(hist, raw, list, empty, mcpLead) {
   var status = '', headStatus = '', recap = '', patBack = false;
   var th = takeThink(raw);   // 思维链：摘出来存在第一条上，不显示成气泡（见 js/chat/prompt.js）
   var outFiles = [];
@@ -120,6 +120,7 @@ function commitAssistantReply(hist, raw, list, empty) {
   if (illus && isDramaHist && typeof imgUse === 'function' && imgUse('drama') === 'gen') added.push({ role: 'assistant', content: '[配图] ' + illus, textImg: illus, illus: true, time: now });
   var pc = charOfHistory(hist);
   if (patBack && pc && chatHistories[pc.id] === hist && Object.assign({}, DEFAULT_CHAT_CFG, pc.chatCfg || {}).patOn) added.push({ role: 'assistant', content: '', pat: 'user', time: now });
+  if (mcpLead && added[0]) added[0].mcpLead = mcpLead;
   added.forEach(function(m) {
     hist.push(m);
     if (list) renderHistMsg(m, list, empty);
@@ -144,7 +145,7 @@ function crRevealOneByOne(list, mark, shown) {
   // 一组 = 一条消息连同它前面的动作小字（还有群里的名字、时间分隔）和后面的小字、小时间；
   // 以前前面的动作小字被分进了上一条，会先冒出来、气泡隔一会儿才跟上，看着不自然（用户说的）
   var groups = [], g = null, lead = false;
-  var isLead = function(e) { return e.classList && (e.classList.contains('cr-speaker') || e.classList.contains('cr-time-sep') || (e.classList.contains('cr-action-note') && e.classList.contains('before'))); };
+  var isLead = function(e) { return e.classList && (e.classList.contains('cr-speaker') || e.classList.contains('cr-time-sep') || e.classList.contains('cr-mcp-notice') || (e.classList.contains('cr-action-note') && e.classList.contains('before'))); };
   els.forEach(function(e) {
     var row = e.classList && e.classList.contains('chat-msg-row');
     if (!g || (isLead(e) && !lead) || (row && !lead)) { g = []; groups.push(g); }
@@ -324,6 +325,7 @@ function genReattach() {
     if (!g.typing) g.typing = appendMsg('ai', '', true, list);
     else if (g.typing.row.parentNode === list) return;
     g.previews().forEach(function(r) { list.appendChild(r); });
+    if (g.toolNotice && !g.toolNotice._mcpAnchor) list.appendChild(g.toolNotice);
     list.appendChild(g.typing.row);
     var empty = list._empty; if (empty) empty.style.display = 'none';
     crStick(list);
@@ -348,11 +350,38 @@ function sendMsg(userText, requestOnly, onDone) {
   var typing = appendMsg('ai', '', true);
   var ctrl = new AbortController();
   var aiText = '';
-  genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
+  var toolRun = { entries: [] }, toolDots = typing.bubble.firstChild;
+  var toolAnchor = hist[hist.length - 1];
+  var generation = genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
   syncGenBtn();
   // 这个角色的聊天室开着（不管在看聊天还是剧情）就画进对应的列表；切去别的角色时不碰那边的列表
   function roomOpen() { return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === replyChar; }
   function scrollLive() { var L = typing.row.parentNode; if (L) crStick(L); }
+  function recordToolCall(item) {
+    if (!toolRun.entries.length && toolAnchor && hist.indexOf(toolAnchor) >= 0) {
+      (toolAnchor.mcpRuns || (toolAnchor.mcpRuns = [])).push(toolRun);
+    }
+    toolRun.entries.push(item);
+    if (toolAnchor && hist.indexOf(toolAnchor) < 0) toolAnchor = null;
+    if (toolAnchor) saveHistories();
+
+    var list = typing.row.parentNode;
+    var notice = generation.toolNotice;
+    if (list && notice && notice.parentNode !== list) {
+      notice = Array.from(list.querySelectorAll('.cr-mcp-notice')).find(function(el) { return el._mcpRun === toolRun; }) || notice;
+    }
+    notice = generation.toolNotice = renderMcpNotice(toolRun, notice);
+    notice._mcpAnchor = toolAnchor;
+    if (list && notice.parentNode !== list) {
+      list.insertBefore(notice, typing.row);
+      var rows = Array.from(list.children);
+      var anchorRow = toolAnchor && rows.find(function(row) { return row._msg === toolAnchor; });
+      if (anchorRow) (anchorRow._mcpNotes || (anchorRow._mcpNotes = [])).push(notice);
+    }
+    typing.bubble.replaceChildren(toolDots);
+    typing.bubble.classList.remove('cr-tool-status');
+    scrollLive();
+  }
 
   // 出错：还在这个对话里就在列表里放一行小字（点开看原因）；已经离开了就在顶部提示一下是谁回复失败。
   // 报错条记在这份记录里，回来时还在原处
@@ -377,7 +406,16 @@ function sendMsg(userText, requestOnly, onDone) {
     if (showing && !isChatView && currentCrSubView === 'contacts' && typeof crDramaSeen === 'function') crDramaSeen(replyChar);
     if (!isGrp) text = replyTakeTags(replyChar, text);   // 改密码、星星、待关心、记下持有…（见上面的标签表）
     var mark = list ? list.lastChild : null;
-    var added = isGrp ? groupCommitReply(replyChar, hist, text, list) : commitAssistantReply(hist, text, list, null);
+    var lead = !toolAnchor && toolRun.entries.length ? toolRun : null;
+    var added = isGrp ? groupCommitReply(replyChar, hist, text, list) : commitAssistantReply(hist, text, list, null, lead);
+    if (lead && added.length && generation.toolNotice) {
+      var provisional = generation.toolNotice;
+      if (list && provisional.open) {
+        var saved = Array.from(list.querySelectorAll('.cr-mcp-notice')).find(function(el) { return el !== provisional && el._mcpRun === toolRun; });
+        if (saved) saved.open = true;
+      }
+      provisional.remove();
+    }
     if (isChatView && !isGrp && added.length && typeof peekCaughtDone === 'function') peekCaughtDone(replyChar);   // 发现查手机的事已经提过了
     // 假流式（用户要的）：回复是一次性整段到的（接口不是边写边出、没冒过预览气泡），聊天窗口里也一条一条蹦出来
     if (list && isGrp && added.length > 1) crRevealOneByOne(list, mark, 0);   // 群里大家一条条说
@@ -466,11 +504,16 @@ function sendMsg(userText, requestOnly, onDone) {
     signal: ctrl.signal,
     cfg: cfg,
     tools: mcpTools,
-    callTool: mcpTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey); } : null,
+    callTool: mcpTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey, recordToolCall); } : null,
     toolLabel: function(name) { var hit = mcpToolMap[name]; return hit ? (hit.tool.title || hit.tool.name) : name; },
-    onStatus: function(text) { typing.bubble.textContent = text; scrollLive(); },
+    onStatus: function(text) {
+      typing.bubble.textContent = text;
+      typing.bubble.classList.add('cr-tool-status');
+      scrollLive();
+    },
     onText: function(full) {
       aiText = full;
+      typing.bubble.classList.remove('cr-tool-status');
       if (isGrp) { scrollLive(); return; }   // 群聊：收完再一条条出来，中间只显示「正在输入」
       // 导入的酒馆状态栏那段不在聊天里冒出来
       var liveText = ((isChatView || statusOnFor(replyChar, true)) && typeof statusStreamCut === 'function') ? statusStreamCut(replyChar, aiText) : aiText;

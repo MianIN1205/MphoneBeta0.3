@@ -161,7 +161,7 @@ function mcpCallTool(server, name, args) {
     }).filter(Boolean);
     if (!parts.length && r.structuredContent) parts.push(JSON.stringify(r.structuredContent));
     var text = parts.join('\n').slice(0, 8000);
-    return (r.isError ? '工具执行出错：' : '') + (text || '（工具没有返回内容）');
+    return { failed: !!r.isError, text: (r.isError ? '工具执行出错：' : '') + (text || '（工具没有返回内容）') };
   });
 }
 
@@ -238,10 +238,29 @@ document.getElementById('mcpAskYes').addEventListener('click', function() { mcpA
 mcpAskTemporary.addEventListener('click', function() { if (!mcpAskTemporary.hidden) mcpAskDone('temporary'); });
 document.getElementById('mcpAskNo').addEventListener('click', function() { mcpAskDone(false); });
 
-function mcpCallFromLLM(name, args, scope) {
+function mcpCallFromLLM(name, args, scope, onResult) {
   var hit = mcpToolMap[name];
-  if (!hit) return Promise.resolve('没有这个工具：' + name);
-  var detail = '工具：' + (hit.tool.title || hit.tool.name) + '（' + (hit.builtin ? '内置' : hit.server.name) + '）\n参数：' + JSON.stringify(args || {}, null, 1).slice(0, 600);
+  var tool = hit ? hit.tool.title || hit.tool.name : name;
+  var provider = hit ? (hit.builtin ? '内置工具' : hit.server.name) : '';
+  var token = hit && hit.server && hit.server.token;
+  function preview(text, limit) {
+    var safe = String(text || '');
+    if (token && token.length >= 4) safe = safe.split(token).join('***');
+    safe = errRedact(safe);
+    return safe.length > limit ? safe.slice(0, limit) + '…' : safe;
+  }
+  function report(state, text) {
+    if (onResult) {
+      var params = Object.keys(args || {}).length ? JSON.stringify(args, function(key, value) {
+        return /token|secret|password|authorization|cookie|credential|api[_-]?key/i.test(key) ? '***' : value;
+      }, 2) : '';
+      onResult({ tool: preview(tool, 100), provider: preview(provider, 80), state: state,
+        params: preview(params, 700), result: preview(text, 1200) });
+    }
+    return text;
+  }
+  if (!hit) return Promise.resolve(report('failed', '没有这个工具：' + name));
+  var detail = '工具：' + tool + '（' + provider + '）\n参数：' + JSON.stringify(args || {}, null, 1).slice(0, 600);
   // 外卖的下单 / 取消单不管「先问我」开没开，都要先问（花的是真钱）
   var mustAsk = hit.server && hit.server.takeout && MCP_TAKEOUT_ASK.test(hit.tool.name);
   // 只信任已知的内置只读工具。读网页可在同一聊天中换链接，其余工具仍绑定具体参数。
@@ -251,10 +270,19 @@ function mcpCallFromLLM(name, args, scope) {
   var needsAsk = mustAsk || (mcpCfg.confirm && !allowed);
   var asked = needsAsk ? mcpAsk(mustAsk ? '角色想帮你下单' : '角色想使用工具', detail, eligible && !mustAsk) : Promise.resolve(true);
   return asked.then(function(ok) {
-    if (!ok) return '用户没有同意这次工具调用，请不用工具直接回答。';
+    if (!ok) {
+      report('denied', '这次调用没有获得授权。');
+      return '用户没有同意这次工具调用，请不用工具直接回答。';
+    }
     if (ok === 'temporary' && key && !mustAsk) mcpLease = { key: key, until: Date.now() + 10 * 60000 };
     var run = hit.builtin ? mcpBuiltinCall(hit.tool.name, args) : mcpCallTool(hit.server, hit.tool.name, args);
-    return hit.server && hit.server.takeout ? run.then(function(text) { mcpTakeoutPayLink(hit.server, text); return text; }) : run;
+    return run.then(function(result) {
+      if (hit.server && hit.server.takeout) mcpTakeoutPayLink(hit.server, result.text);
+      return report(result.failed ? 'failed' : 'done', result.text);
+    }, function(err) {
+      report('failed', err && err.message || '工具调用失败');
+      throw err;
+    });
   });
 }
 
@@ -270,44 +298,56 @@ function renderMcpServers() {
   renderMcpFlomo();
   if (typeof renderMcpTakeout === 'function') renderMcpTakeout();
   var box = document.getElementById('mcpServerList');
+  var openServers = new Set(Array.from(box.querySelectorAll('details[open]'), function(item) { return item.dataset.serverId; }));
   box.innerHTML = '';
   var own = mcpServers.filter(function(sv) { return !sv.takeout && !sv.flomo; });
-  if (!own.length) {
-    var empty = document.createElement('div');
-    empty.className = 'auto-hint';
-    empty.style.margin = '0 4px 12px';
-    empty.textContent = '还没有添加服务器';
-    box.appendChild(empty);
-    return;
-  }
   own.forEach(function(sv) {
-    var card = document.createElement('div');
-    card.className = 'settings-card mcp-server-card';
-    var head = document.createElement('div');
-    head.className = 'auto-row';
+    var card = document.createElement('details');
+    card.className = 'setting-fold mcp-fold mcp-custom-server';
+    card.open = openServers.has(sv.id);
+    card.dataset.serverId = sv.id;
+    var summary = document.createElement('summary');
     var nm = document.createElement('span');
-    nm.className = 'auto-row-label';
     nm.textContent = sv.name;
+    var status = mcpStatus[sv.id];
+    var badge = document.createElement('span');
+    badge.className = 'mcp-server-status';
+    function updateBadge() {
+      var state = status && status.state;
+      badge.className = 'mcp-server-status' + (state && state !== 'ok' ? ' ' + state : sv.tools && sv.enabled ? ' ok' : '');
+      badge.textContent = state === 'busy' ? '连接中…' : state === 'error' ? '连接失败' : sv.tools ? (sv.enabled ? '已连接' : '已停用') : '未连接';
+    }
+    updateBadge();
+    summary.append(nm, badge);
+    var body = document.createElement('div');
+    body.className = 'setting-fold-body';
+    var head = document.createElement('div');
+    head.className = 'auto-row mcp-switch-row';
+    var label = document.createElement('label');
+    label.className = 'auto-row-label';
+    label.textContent = '启用服务器';
+    label.htmlFor = 'mcp-enable-' + sv.id;
     var tl = document.createElement('label');
     tl.className = 'st-toggle-wrap';
     tl.innerHTML = '<input type="checkbox"><span class="st-toggle-slider"></span>';
     var cb = tl.querySelector('input');
+    cb.id = label.htmlFor;
     cb.checked = !!sv.enabled;
-    cb.addEventListener('change', function() { sv.enabled = this.checked; saveMcpServers(); });
-    head.appendChild(nm);
-    head.appendChild(tl);
-    card.appendChild(head);
+    cb.addEventListener('change', function() { sv.enabled = this.checked; saveMcpServers(); updateBadge(); });
+    head.append(label, tl);
+    body.appendChild(head);
+    card.append(summary, body);
 
     var url = document.createElement('div');
     url.className = 'mcp-server-url';
     url.textContent = sv.url;
-    card.appendChild(url);
+    body.appendChild(url);
 
     var st = mcpStatus[sv.id] || { state: '', text: sv.tools ? '上次连接时有 ' + sv.tools.length + ' 个工具' : '还没有连接' };
     var stEl = document.createElement('div');
     stEl.className = 'mcp-server-status ' + st.state;
     stEl.textContent = st.text;
-    card.appendChild(stEl);
+    body.appendChild(stEl);
 
     if (sv.tools && sv.tools.length) {
       var tools = document.createElement('div');
@@ -319,14 +359,15 @@ function renderMcpServers() {
         chip.title = t.description || '';
         tools.appendChild(chip);
       });
-      card.appendChild(tools);
+      body.appendChild(tools);
     }
 
     var row = document.createElement('div');
-    row.className = 'api-test-row';
+    row.className = 'mcp-connection-actions';
     var re = document.createElement('button');
     re.className = 'action-btn btn-apply';
     re.textContent = '重新连接';
+    re.disabled = !!(status && status.state === 'busy');
     re.addEventListener('click', function() { mcpRefreshServer(sv).catch(function() {}); });
     var del = document.createElement('button');
     del.className = 'action-btn btn-apply';
@@ -341,7 +382,7 @@ function renderMcpServers() {
     });
     row.appendChild(re);
     row.appendChild(del);
-    card.appendChild(row);
+    body.appendChild(row);
     box.appendChild(card);
   });
 }
@@ -355,6 +396,7 @@ document.getElementById('mcpAddBtn').addEventListener('click', function() {
   saveMcpServers();
   nameEl.value = ''; urlEl.value = ''; tokEl.value = '';
   mcpRefreshServer(sv).then(function(tools) {
+    document.getElementById('mcpAddPanel').open = false;
     showToast('✓ 已连接「' + sv.name + '」：' + tools.length + ' 个工具', 'success');
   }, function() {
     showToast('✗ 没连上「' + sv.name + '」，可以稍后点「重新连接」', 'error');
@@ -366,7 +408,10 @@ var mcpFlomoForm = document.getElementById('mcpFlomoForm');
 var mcpFlomoToken = document.getElementById('mcpFlomoToken');
 var mcpFlomoConnect = document.getElementById('mcpFlomoConnect');
 var mcpFlomoDisconnect = document.getElementById('mcpFlomoDisconnect');
+var mcpFlomoPanel = document.getElementById('mcpFlomoPanel');
 var mcpFlomoStatus = document.getElementById('mcpFlomoStatus');
+var mcpFlomoHelp = document.getElementById('mcpFlomoHelp');
+var mcpFlomoStatusDetail = document.getElementById('mcpFlomoStatusDetail');
 
 function mcpFlomoServer() {
   return mcpServers.find(function(server) { return server.flomo; });
@@ -377,10 +422,14 @@ function renderMcpFlomo() {
   var busy = status && status.state === 'busy';
   var connected = server && (status ? status.state === 'ok' : Array.isArray(server.tools));
   mcpFlomoStatus.className = 'mcp-server-status' + (status ? ' ' + status.state : '');
-  mcpFlomoStatus.textContent = status ? status.text : connected ? '已保存连接 · ' + server.tools.length + ' 个工具' : '尚未连接';
+  var failed = status && status.state === 'error';
+  mcpFlomoStatusDetail.textContent = failed ? status.text : '';
+  mcpFlomoStatusDetail.hidden = !failed;
+  mcpFlomoStatus.textContent = failed ? '连接失败' : status ? status.text : connected ? '已连接 · ' + server.tools.length + ' 个工具' : '连接';
   mcpFlomoToken.hidden = !!connected;
   mcpFlomoToken.required = !connected;
   mcpFlomoConnect.hidden = !!connected;
+  mcpFlomoHelp.hidden = !!connected;
   mcpFlomoConnect.disabled = !!busy;
   mcpFlomoDisconnect.hidden = !server;
   mcpFlomoDisconnect.disabled = !!busy;
@@ -397,7 +446,12 @@ mcpFlomoForm.addEventListener('submit', function(event) {
   Object.assign(server, { flomo: true, token: token, enabled: true, tools: null });
   mcpFlomoToken.value = '';
   saveMcpServers();
-  mcpRefreshServer(server).catch(function() {});
+  mcpRefreshServer(server).then(function() {
+    if (!mcpFlomoPanel.open) return;
+    var restoreFocus = mcpFlomoPanel.contains(document.activeElement);
+    mcpFlomoPanel.open = false;
+    if (restoreFocus) mcpFlomoPanel.querySelector('summary').focus();
+  }, function() {});
 });
 mcpFlomoDisconnect.addEventListener('click', function() {
   var server = mcpFlomoServer();
@@ -450,30 +504,47 @@ mcpTakeoutOnInput.addEventListener('change', function() {
 function renderMcpTakeout() {
   var box = document.getElementById('mcpTakeoutList');
   if (!box || !MCP_TAKEOUT) return;   // 上面第一次画服务器列表时这里还没定义，最后会再画一次
+  var previous = new Map(Array.from(box.children, function(card) {
+    var input = card.querySelector('input[type=password]');
+    return [card.dataset.provider, { open: card.open, token: input.value }];
+  }));
   box.innerHTML = '';
-  box.classList.toggle('mcp-takeout-off', !mcpCfg.takeout);
   MCP_TAKEOUT.forEach(function(p) {
     var sv = mcpTakeoutServer(p);
-    var card = document.createElement('div');
-    card.className = 'settings-card mcp-server-card';
-    card.innerHTML = '<div class="auto-row"><span class="auto-row-label"></span><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label></div>' +
-      '<div class="auto-hint mcp-takeout-desc"></div><div class="mcp-server-status"></div>' +
-      '<input class="field-input" type="password" autocomplete="off" placeholder="粘贴官方网页里拿到的令牌">' +
-      '<div class="api-test-row"><button class="action-btn btn-apply mcp-to-get">去拿令牌</button><button class="action-btn btn-apply mcp-to-conn">保存并连接</button></div>';
+    var draft = previous.get(p.id);
+    var card = document.createElement('details');
+    card.className = 'setting-fold mcp-fold mcp-provider';
+    card.dataset.provider = p.id;
+    card.open = !!(draft && draft.open);
+    card.innerHTML = '<summary><span class="auto-row-label"></span><span class="mcp-server-status mcp-provider-state"></span></summary>' +
+      '<div class="setting-fold-body"><div class="mcp-provider-setting"><div class="auto-hint mcp-takeout-desc"></div><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label></div>' +
+      '<div class="mcp-server-status mcp-provider-message" role="status"></div>' +
+      '<input class="field-input" type="password" aria-label="品牌令牌" autocomplete="off" placeholder="粘贴官方网页里拿到的令牌">' +
+      '<div class="mcp-connection-actions"><button type="button" class="action-btn btn-apply mcp-to-get">获取令牌</button><button type="button" class="action-btn btn-apply mcp-to-conn">保存并连接</button></div></div>';
     card.querySelector('.auto-row-label').textContent = p.icon + ' ' + p.name;
     card.querySelector('.mcp-takeout-desc').textContent = p.desc;
     var cb = card.querySelector('input[type=checkbox]');
+    cb.setAttribute('aria-label', '启用' + p.name);
     cb.checked = !!(sv && sv.enabled);
     cb.addEventListener('change', function() {
       if (!sv) { this.checked = false; showToast('先填令牌、连接上再打开', 'plain'); return; }
       sv.enabled = this.checked; saveMcpServers();
+      if (sv.tools && (!st || state === 'ok')) {
+        stEl.textContent = sv.enabled ? '已连接' : '已停用';
+        stEl.classList.toggle('ok', sv.enabled);
+      }
     });
-    var st = sv && mcpStatus[sv.id] || { state: '', text: !sv ? '还没有填令牌' : sv.tools ? '上次连接时有 ' + sv.tools.length + ' 个工具' : '还没有连接' };
-    var stEl = card.querySelector('.mcp-server-status');
-    stEl.className = 'mcp-server-status ' + st.state;
-    stEl.textContent = st.text;
+    var st = sv && mcpStatus[sv.id];
+    var state = st ? st.state : '';
+    var stEl = card.querySelector('.mcp-provider-state');
+    stEl.classList.add(state || (sv && sv.enabled && sv.tools ? 'ok' : 'idle'));
+    stEl.textContent = state === 'error' ? '连接失败' : state === 'busy' ? '连接中…' : sv && sv.tools ? (sv.enabled ? '已连接' : '已停用') : '连接';
+    var message = card.querySelector('.mcp-provider-message');
+    message.textContent = state === 'error' ? st.text : '';
+    message.hidden = state !== 'error';
     var tok = card.querySelector('input[type=password]');
-    tok.value = sv ? sv.token : '';
+    tok.value = draft ? draft.token : sv ? sv.token : '';
+    card.querySelector('.mcp-to-conn').disabled = state === 'busy';
     card.querySelector('.mcp-to-get').addEventListener('click', function() { window.open(p.tokenUrl, '_blank'); });
     card.querySelector('.mcp-to-conn').addEventListener('click', function() {
       var t = tok.value.trim().replace(/^Bearer\s+/i, '');

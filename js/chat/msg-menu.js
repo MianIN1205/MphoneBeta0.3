@@ -63,7 +63,7 @@ function unpress() { clearTimeout(pressTimer); if (pressBubble) pressBubble.clas
   var timer = null, sx = 0, sy = 0;
   list.addEventListener('pointerdown', function(e) {
     var bubble = e.target.closest('.chat-msg-bubble');
-    if (!bubble || bubble.querySelector('.typing-dots')) return;
+    if (!bubble || bubble.closest('.cr-typing-row')) return;
     if (typeof msgSelecting === 'function' && msgSelecting()) return;   // 多选时点一下就是勾选
     sx = e.clientX; sy = e.clientY;
     clearTimeout(timer);
@@ -139,7 +139,7 @@ function deleteMsg(t) {
   var hist = histOfList(t.listId);
   var i = t.msg ? hist.indexOf(t.msg) : -1;
   if (i >= 0) hist.splice(i, 1);
-  (t.row._extras || []).concat(t.row._actionNotes || [], t.row._errNotes || []).forEach(function(el) { el.remove(); });
+  (t.row._extras || []).concat(t.row._actionNotes || [], t.row._errNotes || [], t.row._mcpNotes || []).forEach(function(el) { el.remove(); });
   t.row.remove();
   saveHistories();
   var list = document.getElementById(t.listId);

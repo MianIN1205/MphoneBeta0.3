@@ -13,11 +13,28 @@
 }
 
 .mcp-flomo-help { color: #956578; font-size: 12px; text-decoration: underline; }
-#mcpFlomoForm .api-test-row { gap: 6px; margin: 6px 0; }
-#mcpFlomoForm button[hidden], #mcpFlomoToken[hidden] { display: none; }
+#settingsScreen .settings-card.mcp-rows { padding-block: 1px; margin-bottom: 4px; }
+.mcp-builtin + .mcp-builtin, .mcp-provider + .mcp-provider, .mcp-custom-server + .mcp-custom-server,
+.mcp-switch-row + #mcpTakeoutList, .mcp-row-help, #mcpServerList:not(:empty) + #mcpAddPanel {
+  border-top: 1px solid rgba(80,62,72,0.08);
+}
+.mcp-fold > summary { min-height: 42px; font-size: 13px; }
+#settingsScreen .mcp-switch-row { min-height: 38px; }
+.mcp-fold > summary .mcp-server-status { margin: 0 0 0 auto; font-weight: 400; }
+.mcp-flomo-status-detail { margin-bottom: 6px; overflow-wrap: anywhere; }
+.mcp-builtin { gap: 10px; }
+.mcp-builtin-label { flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 9px; }
+.mcp-builtin-note { color: #807a7d; font-size: 11px; font-weight: 400; }
+.mcp-provider > summary, .mcp-custom-server > summary { min-height: 40px; }
+.mcp-custom-server > summary > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.mcp-custom-server > summary .mcp-server-status { flex-shrink: 0; }
+.mcp-provider-setting { display: flex; align-items: center; gap: 8px; }
+.mcp-provider-setting .auto-hint { flex: 1; }
+.mcp-field-label { display: block; }
+.mcp-connection-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 6px; }
+#settingsScreen .mcp-connection-actions .action-btn { flex: none; padding-inline: 12px; }
+.mcp-connection-actions [hidden], #mcpFlomoToken[hidden] { display: none; }
 
-/* 外卖：总开关关着时整组变淡 */
-.mcp-takeout-off .mcp-server-card { opacity: 0.55; }
 .mcp-takeout-desc { margin: 0 0 6px; }
 
 #mcpAskOverlay .mcp-ask-actions { display: flex; flex-wrap: wrap; gap: 5px; }

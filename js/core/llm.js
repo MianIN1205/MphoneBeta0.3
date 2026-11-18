@@ -249,7 +249,7 @@ function llmToolChat(msgs, opts) {
         var results = [];
         return calls.reduce(function(p, c) {
           return p.then(function() {
-            status('🔧 正在使用工具：' + (opts.toolLabel ? opts.toolLabel(c.name) : c.name));
+            status('🔧 工具调用 · ' + (opts.toolLabel ? opts.toolLabel(c.name) : c.name));
             return Promise.resolve(opts.callTool(c.name, c.args)).catch(function(e) { return '工具调用失败：' + e.message; })
               .then(function(r) { results.push({ call: c, text: String(r == null ? '' : r) }); });
           });
@@ -259,7 +259,6 @@ function llmToolChat(msgs, opts) {
           } else {
             results.forEach(function(r) { body.messages.push({ role: 'tool', tool_call_id: r.call.id, content: r.text || '（无内容）' }); });
           }
-          status('💭 正在整理回答…');
           return send();
         });
       });

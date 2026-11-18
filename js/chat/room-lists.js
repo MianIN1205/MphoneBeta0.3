@@ -312,6 +312,13 @@ function renderMsgPage(list, empty, hist, count) {
   if (start === 0 && typeof errRenderSaved === 'function') errRenderSaved(list, null, null, hist);
   hist.slice(start).forEach(function(m) {
     var row = renderHistMsg(m, list, empty);
+    if (Array.isArray(m.mcpRuns)) {
+      m.mcpRuns.forEach(function(run) {
+        var note = renderMcpNotice(run);
+        list.appendChild(note);
+        if (row) (row._mcpNotes || (row._mcpNotes = [])).push(note);
+      });
+    }
     if (m.errs && typeof errRenderSaved === 'function') errRenderSaved(list, m, row, hist);
   });
 }

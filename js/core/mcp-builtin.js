@@ -2,23 +2,23 @@
 // 天气（Open-Meteo）、读网页（Jina Reader）、歌词（LRCLIB）这三个要联网、都是免费不用密钥的接口；计算器、骰子 / 抽签 / 塔罗在手机里算，不联网
 
 var MCP_BUILTINS = [
-  { id: 'weather', name: '天气', icon: '🌤', desc: '查任意城市现在的天气和未来几天（Open-Meteo，免费、不用密钥）', tools: [
+  { id: 'weather', name: '天气', icon: '🌤', desc: '实时天气与预报', tools: [
     { name: 'weather', title: '查天气', description: '查询某个城市现在的天气和未来几天的预报（温度、天气、降水概率）',
       parameters: { type: 'object', properties: { city: { type: 'string', description: '城市名，比如 上海、杭州、东京' }, days: { type: 'integer', description: '预报几天，1～7，默认 3' } }, required: ['city'] } }
   ] },
-  { id: 'web', name: '读网页', icon: '🔗', desc: '读链接里的内容，对方发来链接时可以点开看（通过 Jina Reader 转成文字，免费；有的网站读不了）', tools: [
+  { id: 'web', name: '读网页', icon: '🔗', desc: '提取公开网页正文', tools: [
     { name: 'read_url', title: '读网页', description: '读取一个网页链接里的正文内容（转成文字）。对方发来链接、想让你看看时用',
       parameters: { type: 'object', properties: { url: { type: 'string', description: '完整网址，http 或 https 开头' } }, required: ['url'] } }
   ] },
-  { id: 'lyrics', name: '歌词', icon: '🎵', desc: '按歌名（和歌手）查歌词（LRCLIB，免费；冷门歌和一部分中文歌可能查不到）', tools: [
+  { id: 'lyrics', name: '歌词', icon: '🎵', desc: '按歌名或歌手查找', tools: [
     { name: 'lyrics', title: '查歌词', description: '按歌名查一首歌的歌词，最好带上歌手名',
       parameters: { type: 'object', properties: { title: { type: 'string', description: '歌名' }, artist: { type: 'string', description: '歌手（可选）' } }, required: ['title'] } }
   ] },
-  { id: 'calc', name: '计算器', icon: '🧮', desc: '算数：加减乘除、括号、乘方、百分比（在手机里算，不联网）', tools: [
+  { id: 'calc', name: '计算器', icon: '🧮', desc: '离线算式', tools: [
     { name: 'calculate', title: '计算', description: '计算一个数学式子，支持 + - * / ( ) ^ 和百分号',
       parameters: { type: 'object', properties: { expression: { type: 'string', description: '式子，比如 (128+64)*0.85' } }, required: ['expression'] } }
   ] },
-  { id: 'fun', name: '骰子 · 抽签 · 塔罗', icon: '🎲', desc: '掷骰子、从几个选项里抽一个、求签、抽塔罗牌（在手机里随机，不联网）', tools: [
+  { id: 'fun', name: '骰子 · 抽签 · 塔罗', icon: '🎲', desc: '离线随机', tools: [
     { name: 'roll_dice', title: '掷骰子', description: '掷骰子，可以指定几个、几面',
       parameters: { type: 'object', properties: { count: { type: 'integer', description: '几个骰子，默认 1' }, sides: { type: 'integer', description: '几面，默认 6' } } } },
     { name: 'draw_lots', title: '抽签', description: '从给的几个选项里随机抽一个；不给选项就求一支签（上上签到下签）',
@@ -143,9 +143,11 @@ function mbTarot(a) {
 var MB_RUN = { weather: mbWeather, read_url: mbReadUrl, lyrics: mbLyrics, calculate: mbCalc, roll_dice: mbDice, draw_lots: mbLots, tarot: mbTarot };
 function mcpBuiltinCall(name, args) {
   var fn = MB_RUN[name];
-  if (!fn) return Promise.resolve('没有这个工具：' + name);
-  return Promise.resolve().then(function() { return fn(args || {}); }).then(String, function(err) {
-    return '工具执行出错：' + ((err && err.message) || '不知道为什么') + '。请不用这个工具，直接回答。';
+  if (!fn) return Promise.resolve({ failed: true, text: '没有这个工具：' + name });
+  return Promise.resolve().then(function() { return fn(args || {}); }).then(function(text) {
+    return { failed: false, text: String(text) };
+  }, function(err) {
+    return { failed: true, text: '工具执行出错：' + ((err && err.message) || '不知道为什么') + '。请不用这个工具，直接回答。' };
   });
 }
 
@@ -156,11 +158,13 @@ function renderMcpBuiltins() {
   box.innerHTML = '';
   MCP_BUILTINS.forEach(function(p) {
     var card = document.createElement('div');
-    card.className = 'settings-card mcp-server-card';
-    card.innerHTML = '<div class="auto-row"><span class="auto-row-label"></span><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label></div><div class="auto-hint"></div>';
+    card.className = 'auto-row mcp-switch-row mcp-builtin';
+    card.innerHTML = '<label class="mcp-builtin-label"><span class="auto-row-label"></span><span class="mcp-builtin-note"></span></label><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label>';
     card.querySelector('.auto-row-label').textContent = p.icon + ' ' + p.name;
-    card.querySelector('.auto-hint').textContent = p.desc;
+    card.querySelector('.mcp-builtin-note').textContent = p.desc;
     var cb = card.querySelector('input');
+    cb.id = 'mcp-builtin-' + p.id;
+    card.querySelector('.mcp-builtin-label').htmlFor = cb.id;
     cb.checked = !!mcpBuiltinOn[p.id];
     cb.addEventListener('change', function() {
       if (this.checked) mcpBuiltinOn[p.id] = true; else delete mcpBuiltinOn[p.id];
