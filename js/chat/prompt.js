@@ -48,10 +48,8 @@ function chatFormatRules(char) {
     rules.push('请使用' + c.lang + '回复。');
     if (c.translate) rules.push('每条消息的外语正文后另起一行，以「〔译〕」开头给出中文翻译。');
   }
-  if (c.replyMax > 1) {
-    rules.push('像发微信一样，把这次回复拆成 ' + (c.replyMin === c.replyMax ? c.replyMax : c.replyMin + '~' + c.replyMax) +
-               ' 条消息，每两条之间写 |||。');
-  }
+  rules.push('本轮说出口的话写成 ' + (c.replyMin === c.replyMax ? c.replyMax : c.replyMin + '～' + c.replyMax) +
+    ' 条短气泡，每两条之间写 |||。一个气泡只讲一件事，中文尽量约 20 字，避免超过 30 字。想说的太多时，挑最重要的话说，别把几句硬塞在一起凑条数。动作单独写在 *星号* 内，不算台词条数。需要整段复制的长内容请用长文本或文件。');
   // 帮忙记提醒 / 闹钟 / 日程（见 js/chat/calendar.js）
   if (typeof CAL_RULE === 'string') rules.push(CAL_RULE);
   if (c.recallOn) {

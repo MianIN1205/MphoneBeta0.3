@@ -97,7 +97,8 @@ function commitAssistantReply(hist, raw, list, empty) {
   // 聊天窗口：角色发的照片 <照片>画面</照片> 拆成单独一条（js/chat/img-use.js）
   if (rc && chatHistories[rc.id] === hist && typeof photoSplitParts === 'function') parts = photoSplitParts(parts, hist);
   // 聊天窗口：像微信那样一句一个气泡（每次回复条数设成 1 的角色除外）
-  if (rc && chatHistories[rc.id] === hist && Object.assign({}, DEFAULT_CHAT_CFG, rc.chatCfg || {}).replyMax > 1 && !(typeof charBigBubble === 'function' && charBigBubble(rc))) parts = chatSplitLines(parts);   // 仿siya：一整个大气泡，不拆
+  var formatChat = rc && chatHistories[rc.id] === hist && !charBigBubble(rc);
+  if (formatChat) parts = chatSplitLines(parts);
   // 聊天窗口：<撤回>…</撤回> 拆成单独一条，先显示两秒再变成撤回提示
   if (rc && chatHistories[rc.id] === hist) parts = splitRecallParts(parts);
   // 聊天窗口：回复里的「[表情包：名字]」拆成单独的表情包消息（见 js/chat/stickers.js）
@@ -188,6 +189,15 @@ function chatSentences(seg) {
   if (buf.trim()) out.push(buf.trim());
   return out;
 }
+function splitChatActions(text) {
+  var parts = [], at = 0;
+  actionSpans(text).forEach(function(span) {
+    parts.push(text.slice(at, span[0]).trim(), text.slice(span[0], span[1]));
+    at = span[1];
+  });
+  parts.push(text.slice(at).trim());
+  return parts.filter(Boolean);
+}
 function chatSplitLines(parts) {
   var out = [];
   parts.forEach(function(p) {
@@ -207,19 +217,16 @@ function chatSplitLines(parts) {
       if (hasTr || chatLineDone(buf)) { segs.push(buf); buf = ''; }   // 带翻译的照行分，不按句子切（翻译要对着原文）
     });
     if (buf) segs.push(buf);
-    var pending = '';
     segs.forEach(function(seg) {
-      if (/^〔译〕/.test(seg)) { if (out.length && typeof out[out.length - 1] === 'string') out[out.length - 1] += '\n' + seg; return; }
-      (hasTr ? [seg] : chatSentences(seg)).forEach(function(t) {
-        if (ACTION_LINE_RE.test(t)) { pending += (pending ? ' ' : '') + t; return; }
-        out.push((pending ? pending + ' ' : '') + t);
-        pending = '';
+      if (/^〔译〕/.test(seg)) {
+        if (out.length && typeof out[out.length - 1] === 'string') out[out.length - 1] += '\n' + seg;
+        return;
+      }
+      splitChatActions(seg).forEach(function(part) {
+        if (ACTION_LINE_RE.test(part) || hasTr) out.push(part);
+        else chatSentences(part).forEach(function(sentence) { out.push(sentence); });
       });
     });
-    if (pending) {
-      if (out.length && typeof out[out.length - 1] === 'string') out[out.length - 1] += ' ' + pending;
-      else out.push(pending);
-    }
   });
   // 一句太长的，再在逗号处分开
   var res = [];
