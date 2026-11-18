@@ -354,3 +354,17 @@
   border: 0; background: #f5e4eb; color: #834d63;
   font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
 }
+
+.img-viewer-count {
+  position: absolute; top: max(14px, env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%); padding: 4px 10px; border-radius: 14px;
+  background: #231b24aa; color: #fff4f9; font-size: 12px; pointer-events: none;
+}
+.img-viewer-count[hidden], .img-viewer-sticker-name[hidden] { display: none; }
+.img-viewer.is-sticker { flex-direction: column; gap: 10px; }
+.img-viewer.is-sticker img { max-width: 90%; max-height: 72%; }
+.img-viewer-sticker-name {
+  position: relative; max-width: 90%; color: #fff4f9; font-size: 14px;
+  text-align: center; overflow-wrap: anywhere; pointer-events: none;
+}
+.chat-msg-bubble.sticker-bubble img { cursor: zoom-in; }
