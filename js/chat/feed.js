@@ -621,13 +621,13 @@ function charNpcComments(post, idx) {
   pastComments = pastComments.slice(0, 12);
   var msgs = charContextMsgs(idx).concat([activityAsk(
     '【动态评论区】你刚发了一条动态：\n「' + post.text + '」' + ((post.textImgs || []).length ? '（配图：' + post.textImgs.join('；') + '）' : '') + '\n' +
-    '现在你现实生活里的人来评论了：按你的人设和生活安排 1～4 个人（朋友、同事、同学、家人、网友……），名字和称呼要像真人，' +
+    '现在你现实生活里的人来评论了：按你的人设和生活安排 0～4 个人（朋友、同事、同学、家人、网友……），名字和称呼要像真人，' +
     '不要是{{user}}' + (others.length ? '，也不要是 ' + others.join('、') : '') + '。' +
     (known.length ? '以前在你动态下出现过的人：' + known.join('、') + '，可以还是他们，也可以有新的人。' : '') +
     (pastComments.length ? '你之前几条动态下面已经有过这些评论：\n' + pastComments.join('\n') + '\n这次的评论要针对这条动态的具体内容，不要重复或改写上面的话，换不同的人、不同的说法。' : '') +
-    '每人说 1～3 句，口语，像朋友圈评论那样各有各的语气，可以互相接话、打趣。' +
+    '每人说 1～3 句，口语，就着这条动态的具体内容说；有些动态没人评论也正常。需要接话时，用 replies 指向前面出现的名字。' +
     '然后你看心情回复：可以都回、只回一部分，也可以一个都不回；回复一到三句，还是你平时的口吻。都不写动作描写和 *星号*。' +
-    '只输出 JSON：{"comments": [{"name": "名字", "text": "评论"}], "replies": [{"to": "回复谁的名字", "text": "你的回复"}]}，不回复时 replies 为空数组。'
+    '点赞的人可以不评论，评论的人也可以不点赞。允许没有人点赞。只输出 JSON：{"likes": ["点赞者姓名"], "comments": [{"name": "名字", "text": "评论"}], "replies": [{"from": "自己或上述某个评论者的名字", "to": "回复谁的名字", "text": "回复"}]}，不回复时 replies 为空数组。'
   )]);
   return callApiOnce(msgs, char).then(function(text) {
     var m = String(text).match(/\{[\s\S]*\}/);
@@ -637,18 +637,30 @@ function charNpcComments(post, idx) {
     var names = Object.create(null);
     (Array.isArray(o.comments) ? o.comments : []).slice(0, 4).forEach(function(c) {
       var name = clean(c && c.name).slice(0, 12), txt = clean(c && c.text);
-      if (!name || !txt || name === me.name) return;
+      if (!name || !txt || name === me.name || others.indexOf(name) >= 0 || names[name]) return;
       var a = npcAuthor(char, name);
       var comment = makeFeedComment(a, txt, null);
       names[name] = comment;
       post.comments.push(comment);
     });
-    (Array.isArray(o.replies) ? o.replies : []).forEach(function(r) {
+    (Array.isArray(o.replies) ? o.replies : []).slice(0, 6).forEach(function(r) {
       var to = names[clean(r && r.to)], txt = clean(r && r.text);
-      if (!to || !txt) return;
-      post.comments.push(makeFeedComment(me, txt, to));
+      var from = clean(r && r.from);
+      var author = !from || from === '自己' || from === me.name ? me : (names[from] && names[from].author);
+      if (!author || !to || !txt || author.id === to.author.id) return;
+      post.comments.push(makeFeedComment(author, txt, to));
     });
-    var got = Object.keys(names);
+    var liked = [];
+    (Array.isArray(o.likes) ? o.likes : []).slice(0, 5).forEach(function(rawName) {
+      if (typeof rawName !== 'string') return;
+      var name = clean(rawName).slice(0, 12);
+      if (!name || name === me.name || name === (resolveCharAccount(char) || {}).nickname || others.indexOf(name) >= 0) return;
+      var author = npcAuthor(char, name);
+      if (post.likes.some(function(a) { return sameAuthor(a, author); })) return;
+      post.likes.push(author);
+      liked.push(name);
+    });
+    var got = Object.keys(names).concat(liked.filter(function(name) { return !names[name]; }));
     if (got.length) {
       char.feedNpcs = (char.feedNpcs || []).filter(function(n) { return got.indexOf(n) < 0; }).concat(got).slice(-30);
       saveCharList();
@@ -710,16 +722,24 @@ function feedContextFor(char) {
 // 解析角色返回的 { like, comment }，容错处理多余文字
 function parseInteraction(text) {
   var m = text.match(/\{[\s\S]*\}/);
-  if (m) { try { var o = JSON.parse(m[0]); return { like: !!o.like, comment: String(o.comment || '').trim() }; } catch (_) {} }
+  if (m) { try { var o = JSON.parse(m[0]); return { like: o.like === true, comment: String(o.comment || '').trim(), npcReplies: Array.isArray(o.npcReplies) ? o.npcReplies : [] }; } catch (_) {} }
   return { like: false, comment: stripQuotes(text) };
 }
 
 // 角色是否需要回应：没评论过，或者用户在 TA 上次发言后又回复了 TA
+// 作者可留意自己动态下的新留言，包括用户回复 NPC 的那一条。
+function feedLatestUserReply(post, author) {
+  for (var i = post.comments.length - 1; i >= 0; i--) {
+    var c = post.comments[i];
+    if (c.author.type === 'user' && (sameAuthor(post.author, author) || sameAuthor(c.replyTo, author))) return c;
+  }
+  return null;
+}
 function charNeedsToRespond(post, author) {
   var lastMine = -1, lastToMe = -1;
   post.comments.forEach(function(c, i) {
     if (sameAuthor(c.author, author)) lastMine = i;
-    if (c.author.type === 'user' && (sameAuthor(c.replyTo, author) || (!c.replyTo && sameAuthor(post.author, author)))) lastToMe = i;
+    if (c.author.type === 'user' && (sameAuthor(c.replyTo, author) || sameAuthor(post.author, author))) lastToMe = i;
   });
   return lastMine === -1 || lastToMe > lastMine;
 }
@@ -728,6 +748,19 @@ function charInteract(post, idx) {
   var char = charList[idx];
   var me = charAuthor(char);
   var isOwn = sameAuthor(post.author, me);
+  var parent = feedLatestUserReply(post, me);
+  var npcOptions = new Map();
+  if (isOwn && parent) {
+    // 只让这条动态里已经出现过的人接话，避免老评论区突然涌入一批陌生人。
+    if (parent.replyTo && parent.replyTo.type === 'npc' && parent.replyTo.ownerId === char.id)
+      npcOptions.set(parent.replyTo.name, parent.replyTo);
+    if (Math.random() < 0.55) {
+      post.comments.map(function(c) { return c.author; }).concat(post.likes).forEach(function(author) {
+        if (author && author.type === 'npc' && author.ownerId === char.id && npcOptions.size < 4)
+          npcOptions.set(author.name, author);
+      });
+    }
+  }
   // 动态配图：开启识图时把真实图片发给角色看
   var imgMsg = (mediaCfg.vision && post.images && post.images.length)
     ? [{ role: 'user', content: [{ type: 'text', text: '（这是这条动态附带的图片）' }].concat(
@@ -736,24 +769,29 @@ function charInteract(post, idx) {
   var msgs = charContextMsgs(idx).concat(imgMsg, [activityAsk(
     '【动态互动】现在是 ' + nowText(char) + '。你（' + me.name + '）在刷动态时看到了' + (isOwn ? '自己发的' : '下面这条') + '动态：\n\n' +
     feedPostAsText(post, char) + '\n\n' +
-    '请以角色身份决定是否点赞，并写一条评论；如果评论区里有人回复了你或评论了你的动态，就回复对方。' +
+    '由你决定要不要点赞或说话。没什么想说可以沉默；用户回复了别人时，你也可以在合适的时候接一句。' +
     '评论像真人在朋友圈下面回复：口语，一到三句，不写动作描写和 *星号*。' +
-    '只输出 JSON：{"like": true 或 false, "comment": "评论内容"}，不想评论时 comment 为空字符串。'
+    (parent ? '\n本次要回应的用户留言：' + parent.text : '') +
+    (npcOptions.size ? '\n这些人也看到了用户这条留言：' + Array.from(npcOptions.keys()).join('、') + '。可选零到两人接话，优先考虑用户直接回复的那位。按各自口吻写，各自独立决定是否回复，不用替所有人说话。' : '') +
+    '只输出 JSON：{"like": true 或 false, "comment": "角色的评论", "npcReplies": [{"name": "评论者的名字", "text": "回复"}]}。不想评论时 comment 为空，不需要 NPC 回复时 npcReplies 为空。'
   )]);
   return callApiOnce(msgs, char).then(function(text) {
     var r = parseInteraction(memExtractTags(char, text));
     r.comment = r.comment.replace(actionRe(), '').replace(/[ \t]{2,}/g, ' ').trim();
     if (r.like && !isOwn && !post.likes.some(function(a) { return sameAuthor(a, me); })) post.likes.push(me);
     if (r.comment) {
-      // 回复对象：最近一条 @ 自己或评论自己动态的用户评论
-      var parent = null;
-      for (var i = post.comments.length - 1; i >= 0; i--) {
-        var c = post.comments[i];
-        if (c.author.type === 'user' && (sameAuthor(c.replyTo, me) || (isOwn && !c.replyTo))) { parent = c; break; }
-      }
       post.comments.push(makeFeedComment(me, r.comment, parent));
       memLogFeed(char, (isOwn ? '我在自己的动态下回复：' : '我在 ' + post.author.name + ' 的动态下评论：') + r.comment.slice(0, 80));
     }
+    if (parent && post.comments.indexOf(parent) >= 0) (r.npcReplies || []).slice(0, 2).forEach(function(reply) {
+      if (!reply || typeof reply.text !== 'string') return;
+      var author = npcOptions.get(String(reply.name || '').trim());
+      var text = reply.text.replace(actionRe(), '').trim();
+      if (!author || !text || post.comments.some(function(c) {
+        return c.replyToCommentId === parent.id && sameAuthor(c.author, author);
+      })) return;
+      post.comments.push(makeFeedComment(author, text, parent));
+    });
   });
 }
 
@@ -800,7 +838,9 @@ function requestFeedInteraction(post, opts) {
       return charInteract(post, idx).then(function() {
         if (!opts.auto) return;
         var me = charAuthor(charList[idx]);
-        var said = post.comments.slice(before).filter(function(c) { return sameAuthor(c.author, me); });
+        var said = post.comments.slice(before).filter(function(c) {
+          return sameAuthor(c.author, me) || (c.author.type === 'npc' && c.replyTo && c.replyTo.type === 'user');
+        });
         var toYou = said.some(function(c) { return c.replyTo && c.replyTo.type === 'user'; });
         var msg = said.length ? (toYou ? '回复了你' : mine ? '评论了你的动态' : '在动态下说了话')
           : post.likes.length > liked && mine ? '赞了你的动态' : '';
@@ -808,7 +848,7 @@ function requestFeedInteraction(post, opts) {
         saveFeed(); renderFeed();
         // 和你有关的（回你、评论 / 赞你的动态）弹小横幅（用户要的），别的还是小提示
         var comment = said[said.length - 1];
-        if (toYou || mine) notifyFeedActivity(charList[idx], post, msg + (comment ? '：' + comment.text : ''), comment);
+        if (toYou || mine) notifyFeedActivity(charList[idx], post, (comment && comment.author.type === 'npc' ? comment.author.name + ' ' : '') + msg + (comment ? '：' + comment.text : ''), comment);
         else showToast('「' + me.name + '」' + msg, 'plain');
       }).catch(function(err) { errors++; console.warn('[Mphone] 动态互动失败:', err); });
     });

@@ -181,13 +181,19 @@ function crossSceneContext(idx, isDrama) {
   };
   var lines = [];
   if (isDrama) {
-    other.filter(function(m) { return !m.action; }).slice(-CROSS_SCENE_MSGS).forEach(function(m) {
-      var l = lineOf(m);
-      if (l) lines.push(l);
+    // 一轮回复可能拆成很多气泡，按用户发言找边界，避免只剩角色最后几句。
+    var recent = other.filter(function(m) { return !m.action && !m.recalled && !m.note && !m.pat; });
+    var start = Math.max(0, recent.length - 24), turns = 0;
+    for (var i = recent.length - 1; i >= start; i--) {
+      if (recent[i].role === 'user' && ++turns === 4) { start = i; break; }
+    }
+    recent.slice(start).forEach(function(m) {
+      var line = lineOf(m);
+      if (line) lines.push(line);
     });
     var sums = ((char.memory || {}).summaries || []).map(function(s) { return s.text; });
     if (!sums.length && !lines.length) return '';
-    return '【线上聊天的前情】以下是你们在线上聊天里的经过（那时你们隔着手机屏幕）：\n' +
+    return '【线上聊天的前情】以下是你们在线上聊天里的经过（那时你们隔着手机屏幕）。如果这次剧情是在接刚才商量的事，按最近确定的人物、地点、约定或未完的动作继续；新剧情有明确开场时，以用户的新开场为准。\n' +
       (sums.length ? sums.join('\n') + (lines.length ? '\n最近的聊天：\n' : '') : '') + lines.join('\n');
   }
   var dr = other.filter(function(m) { return !m.action; });

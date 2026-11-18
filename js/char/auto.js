@@ -67,19 +67,6 @@ function autoPostAllowed(char) {
   return mine.filter(function(p) { return p.time >= day0.getTime(); }).length < a.postMaxDay;
 }
 
-// 聊天回复后按概率发动态
-function maybeAutoPostAfterChat(idx) {
-  var char = charList[idx];
-  if (!char || !char.auto || !char.auto.postOn) return;
-  if (!autoPostAllowed(char)) return;
-  if (Math.random() * 100 >= char.auto.postChance) return;
-  if (char._autoBusy) return;
-  char._autoBusy = true;
-  generateCharPost(idx)
-    .catch(function(err) { console.warn('[Mphone] 自动发动态失败:', err); })
-    .then(function() { delete char._autoBusy; });
-}
-
 // 记录最后几条对方发了但还没被回复的消息（只发出去、没按 ❄️ 请求回复的文字、图片、语音、拍一拍）
 function unrepliedUserMsgs(hist) {
   var out = [];
@@ -165,48 +152,55 @@ function autoSendMessage(idx) {
 // 调度：每个角色记录下次活动时间 { 角色 id: { at, sig } }，设置变化时重新排期
 var autoNext = mphoneStore.load('mphone_auto_next', {});
 
-function autoSig(a) { return JSON.stringify([a.msgOn, a.mode, a.fixedMin, a.randMin, a.randMax, a.postOn]); }
 function autoDelay(a) {
   var mins = a.mode === 'fixed' ? a.fixedMin : a.randMin + Math.random() * (a.randMax - a.randMin);
-  return mins * 60000;
+  return Math.max(1, mins) * 60000;
 }
 
 function autoTick() {
-  var now = Date.now();
-  var changed = false;
-  charList.forEach(function(char, idx) { if (char.isGroup) return;   // 群聊不算
-    var a = char.auto;
-    if (!a || !(a.msgOn || a.postOn)) {
+  var now = Date.now(), changed = false;
+  charList.forEach(function(char, idx) {
+    if (char.isGroup) return;
+    var a = Object.assign({}, DEFAULT_AUTO, char.auto || {});
+    if (!a.msgOn && !a.postOn) {
       if (autoNext[char.id]) { delete autoNext[char.id]; changed = true; }
       return;
     }
-    // 只开了「发动态」时，定时发动态的间隔沿用随机 / 固定设置
-    var sig = autoSig(a);
-    var plan = autoNext[char.id];
-    if (!plan || plan.sig !== sig) {
-      autoNext[char.id] = { at: now + autoDelay(a), sig: sig };
+    var plan = autoNext[char.id] || (autoNext[char.id] = {});
+    var interval = JSON.stringify([a.mode, a.fixedMin, a.randMin, a.randMax]);
+    function nextFor(kind, enabled, sig) {
+      if (!enabled) {
+        if (plan[kind]) { delete plan[kind]; changed = true; }
+        return null;
+      }
+      if (!plan[kind] || plan[kind].sig !== sig || !Number.isFinite(plan[kind].at)) {
+        plan[kind] = { at: now + autoDelay(a), sig: sig };
+        changed = true;
+      }
+      return plan[kind];
+    }
+    var msg = nextFor('msg', a.msgOn, interval);
+    var post = nextFor('post', a.postOn, interval);
+    if (char._autoBusy || (typeof genBusyChar === 'function' && genBusyChar(char))) return;
+    var viewing = appChatRoom.classList.contains('active') && openingChatCharIdx === idx;
+    var history = getChatHistory(idx), last = history[history.length - 1];
+    var activeAt = Math.max(char._lastChatAt || 0, (last && last.time) || 0);
+    var messageDue = msg && now >= msg.at && !viewing && now - activeAt >= AUTO_QUIET_MS;
+    var postDue = post && now >= post.at;
+    if (!messageDue && !postDue) return;
+    var run;
+    if (messageDue) {
+      msg.at = now + autoDelay(a);
       changed = true;
-      return;
+      run = autoSendMessage;
+    } else if (postDue) {
+      post.at = now + autoDelay(a);
+      changed = true;
+      if (autoPostAllowed(char) && Math.random() * 100 < a.postChance) run = generateCharPost;
     }
-    if (now < plan.at || char._autoBusy) return;
-
-    // 对方有没回复的消息时，先回消息，不去发动态
-    var doPost = a.postOn && autoPostAllowed(char) && (!a.msgOn || (!unrepliedUserMsgs(getChatHistory(idx)).length && Math.random() < 0.3));
-    // 主动消息只在「后台」发（用户要的）：正看着这个聊天、TA 正在回复、或者刚聊过 / 刚离开不到 AUTO_QUIET_MS，都先等着，
-    // 不重新排期，等条件过了下一次检查就发（不会在用户打字、刚发了两条还没点 ❄️ 的时候插进来）
-    // 只开了发动态、但这次频率不让发：不发消息，等下一次
-    if (!doPost && !a.msgOn) { autoNext[char.id] = { at: now + autoDelay(a), sig: sig }; changed = true; return; }
-    if (!doPost) {
-      var viewingThis = appChatRoom.classList.contains('active') && openingChatCharIdx === idx;
-      var recent = char._lastChatAt && now - char._lastChatAt < AUTO_QUIET_MS;
-      if (viewingThis || recent || (typeof genBusyChar === 'function' && genBusyChar(char))) return;
-    }
-
-    // 到点：只执行一次（关闭页面期间错过的不补发多次），然后重新排期
-    autoNext[char.id] = { at: now + autoDelay(a), sig: sig };
-    changed = true;
+    if (!run) return;
     char._autoBusy = true;
-    (doPost ? generateCharPost(idx) : autoSendMessage(idx))
+    Promise.resolve().then(function() { return run(idx); })
       .catch(function(err) { console.warn('[Mphone] 自主活动失败:', err); })
       .then(function() { delete char._autoBusy; });
   });

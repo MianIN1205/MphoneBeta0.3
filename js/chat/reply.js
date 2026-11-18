@@ -439,8 +439,6 @@ function sendMsg(userText, requestOnly, onDone) {
     if (aiText) {
       var added = deliver(aiText);
       if (isChatView && !isGrp) maybeAutoSummarize(replyCharIdx);
-      // 只在「聊天」子视图回复后按概率触发动态（剧情不触发）
-      if (isChatView && !isGrp) maybeAutoPostAfterChat(replyCharIdx);
       if (onDone) onDone(added);
     } else {
       typing.row.remove();
