@@ -132,6 +132,14 @@
 .moment-item.has-new.is-helper .moment-av { box-shadow: 0 0 0 2px #f7a8bd, 0 0 12px 3px rgba(246,140,170,0.55); }
 .moment-item .chat-avatar-add { margin: 3px; }
 .moment-name { max-width: 60px; font-size: 11px; color: #a08890; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 14px; }
+.moment-pin-setting {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: #5f4855; font-size: 13px;
+}
+.moment-pin-setting label { flex-shrink: 0; }
+.moment-pin-setting select { width: auto; flex: 1; min-width: 0; margin: 0; }
+.moment-pick-label { color: #81717b; font-size: 12px; margin-top: 3px; }
+#momentPickList .feed-visible-chip { font-family: inherit; }
 /* 点开的卡片：半透明毛玻璃；头像在左，名字和更新时间在右，下面一行此刻、一行最新动态 */
 #momentOverlay { background: rgba(60,30,45,0.18); }
 .mine-acc-modal.moment-card {

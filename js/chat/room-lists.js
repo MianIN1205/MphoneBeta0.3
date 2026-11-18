@@ -73,45 +73,105 @@ function confirmPickedImage(srcs, onSend) {
   ov.addEventListener('click', function(e) { if (e.target === ov) close(); });
   (document.querySelector('.phone') || document.body).appendChild(ov);
 }
-function sendPickedImage(files) {
-  if (!files || openingChatCharIdx === -1) return;
-  var char = charList[openingChatCharIdx], subview = currentCrSubView;
-  if (!char) return;
-  var sameRoom = function() {
-    return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === char && currentCrSubView === subview;
-  };
-  var list = Array.prototype.slice.call(files.length !== undefined ? files : [files], 0, PICK_MAX);
-  if (!list.length) return;
-  if (files.length > PICK_MAX) showToast('一次最多选 ' + PICK_MAX + ' 张，请确认前 ' + PICK_MAX + ' 张', 'plain');
-  var photos = [], left = list.length;
-  var finish = function() {
-    if (--left || !sameRoom()) return;
-    var got = photos.filter(Boolean);
-    if (!got.length) { showToast('图片读不出来', 'error'); return; }
-    var im = { role: 'user', content: got.length > 1 ? '[图片消息 · ' + got.length + ' 张]' : '[图片消息]', imgSrc: got[0].src, time: Date.now() };
-    if (got.length > 1) im.images = got;
-    if (pendingQuote) { im.quote = pendingQuote; clearQuote(); }
-    getActiveHistory(openingChatCharIdx).push(im);
-    renderHistMsg(im);
-    saveHistories();
-  };
-  list.forEach(function(file, i) {
+// 失败的设备文件先留在当前页面，重试只读取失败项。
+var pendingChatPhotos = new WeakMap();
+
+function readChatPhoto(file) {
+  return new Promise(function(resolve, reject) {
     var reader = new FileReader();
-    reader.onload = function(ev) {
-      compressImage(ev.target.result, 1024, function(src) {
+    reader.onerror = reader.onabort = reject;
+    reader.onload = function() {
+      compressImage(reader.result, 1024, function(src) {
         var img = new Image();
-        img.onload = function() {
-          photos[i] = { src: src, width: img.naturalWidth, height: img.naturalHeight };
-          finish();
-        };
-        img.onerror = finish;
+        img.onload = function() { resolve({ src: src, width: img.naturalWidth, height: img.naturalHeight }); };
+        img.onerror = reject;
         img.src = src;
       });
     };
-    reader.onerror = finish;
     reader.readAsDataURL(file);
   });
 }
+
+function forgetPhotoBatch(batch) {
+  var batches = pendingChatPhotos.get(batch.hist);
+  if (batches) batches.delete(batch);
+  if (batch.notice) batch.notice.remove();
+}
+
+function renderPhotoRetry(batch, list) {
+  if (!batch.notice) {
+    var notice = batch.notice = document.createElement('div');
+    notice.className = 'cr-photo-retry';
+    notice.innerHTML = '<span class="cr-photo-retry-label" role="status"></span>' +
+      '<button type="button" class="cr-photo-retry-action">重试</button>' +
+      '<button type="button" class="cr-photo-retry-dismiss" aria-label="忽略未发送的图片">×</button>';
+    notice.querySelector('.cr-photo-retry-action').addEventListener('click', function() { sendPhotoBatch(batch); });
+    notice.querySelector('.cr-photo-retry-dismiss').addEventListener('click', function() { forgetPhotoBatch(batch); });
+  }
+  var numbers = batch.pending.map(function(item) { return item.number; }).join('、');
+  batch.notice.querySelector('.cr-photo-retry-label').textContent = batch.busy
+    ? '正在重试…'
+    : '第 ' + numbers + ' 张没发成';
+  batch.notice.querySelectorAll('button').forEach(function(button) { button.disabled = batch.busy; });
+  if (list && batch.notice.parentNode !== list) list.appendChild(batch.notice);
+}
+
+function sendPhotoBatch(batch) {
+  if (batch.busy) return;
+  batch.busy = true;
+  if (batch.notice) renderPhotoRetry(batch);
+  Promise.allSettled(batch.pending.map(function(item) { return readChatPhoto(item.file); })).then(function(results) {
+    batch.busy = false;
+    var histories = batch.subview === 'contacts' ? dramaHistories : chatHistories;
+    if (findCharIdx(batch.char.id) < 0 || histories[batch.char.id] !== batch.hist) {
+      forgetPhotoBatch(batch);
+      return;
+    }
+    var list = appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === batch.char && currentCrSubView === batch.subview
+      ? getActiveMsgListEl() : null;
+    var photos = [];
+    batch.pending = batch.pending.filter(function(item, i) {
+      if (results[i].status === 'rejected') return true;
+      photos.push(results[i].value);
+      return false;
+    });
+    if (batch.notice) batch.notice.remove();
+    if (photos.length) {
+      var message = { role: 'user', content: photos.length > 1 ? '[图片消息 · ' + photos.length + ' 张]' : '[图片消息]',
+        imgSrc: photos[0].src, time: Date.now() };
+      if (photos.length > 1) message.images = photos;
+      if (batch.quote) {
+        message.quote = batch.quote;
+        if (list && pendingQuote === batch.quote) clearQuote();
+        var draft = crDrafts[batch.char.id + ':' + batch.subview];
+        if (draft && draft.quote === batch.quote) draft.quote = null;
+        batch.quote = null;
+      }
+      batch.hist.push(message);
+      if (list) renderHistMsg(message, list);
+      saveHistories();
+    }
+    if (batch.pending.length) {
+      var batches = pendingChatPhotos.get(batch.hist);
+      if (!batches) pendingChatPhotos.set(batch.hist, batches = new Set());
+      batches.add(batch);
+      renderPhotoRetry(batch, list);
+      if (list) crStick(list);
+    } else forgetPhotoBatch(batch);
+  });
+}
+
+function sendPickedImage(files) {
+  if (!files || openingChatCharIdx === -1) return;
+  var char = charList[openingChatCharIdx];
+  if (!char) return;
+  var list = Array.prototype.slice.call(files.length !== undefined ? files : [files], 0, PICK_MAX);
+  if (!list.length) return;
+  if (files.length > PICK_MAX) showToast('一次最多发送前 ' + PICK_MAX + ' 张', 'plain');
+  var pending = list.map(function(file, i) { return { file: file, number: i + 1 }; });
+  sendPhotoBatch({ char: char, subview: currentCrSubView, hist: getActiveHistory(openingChatCharIdx), quote: pendingQuote, pending: pending });
+}
+
 (function() {
   var crAlbumFileInput = document.getElementById('crAlbumFileInput');
   var chatRoomContent  = document.getElementById('chatRoomContent');
@@ -321,6 +381,8 @@ function renderMsgPage(list, empty, hist, count) {
     }
     if (m.errs && typeof errRenderSaved === 'function') errRenderSaved(list, m, row, hist);
   });
+  var photoBatches = pendingChatPhotos.get(hist);
+  if (photoBatches) photoBatches.forEach(function(batch) { renderPhotoRetry(batch, list); });
 }
 // 滑到顶部：多画一页，并保持当前看到的位置不动
 function loadEarlierMsgs(list) {

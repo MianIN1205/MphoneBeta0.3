@@ -17,6 +17,8 @@ function closeCrPlusPanel() {
     if (p[0]) p[0].classList.remove('open');
     if (p[1]) p[1].classList.remove('active');
   });
+  if (crEmojiPanel) crEmojiPanel.inert = true;
+  if (crEmojiBtn) crEmojiBtn.setAttribute('aria-expanded', 'false');
   if (crBottomBar) crBottomBar.classList.remove('panel-open');
   if (typeof closeVoicePop === 'function') closeVoicePop();
 }
@@ -28,6 +30,10 @@ function toggleCrDrawer(panel, btn) {
   if (!willOpen) return;
   panel.classList.add('open');
   btn.classList.add('active');
+  if (panel === crEmojiPanel) {
+    panel.inert = false;
+    btn.setAttribute('aria-expanded', 'true');
+  }
   if (crBottomBar) crBottomBar.classList.add('panel-open');
   setTimeout(function() {
     var activeList = getActiveMsgListEl();

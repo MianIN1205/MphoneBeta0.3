@@ -9,6 +9,53 @@
 // =============================================
 var stkData = mphoneStore.load('mphone_stickers', null);
 if (!stkData || !Array.isArray(stkData.cats) || !Array.isArray(stkData.items)) stkData = { cats: [], items: [] };
+if (!stkData.emojiPackAdded) {
+  var defaultCat = stkCatByName('自带');
+  if (!defaultCat) {
+    defaultCat = { id: 'sc-mphone-defaults', name: '自带' };
+    stkData.cats.unshift(defaultCat);
+  }
+  [
+    ["little-heart", "给你比心"],
+    ["happy-face", "开心一下"],
+    ["emoji-03", "笑出眼泪"],
+    ["emoji-04", "拜托拜托"],
+    ["emoji-05", "放声哭哭"],
+    ["emoji-06", "脸红了"],
+    ["emoji-07", "哼一声"],
+    ["emoji-08", "翻个白眼"],
+    ["emoji-09", "困困"],
+    ["emoji-10", "戴上墨镜"],
+    ["emoji-11", "双手比心"],
+    ["emoji-12", "抱抱你"],
+    ["emoji-13", "亲一口"],
+    ["emoji-14", "偷偷笑"],
+    ["emoji-15", "得意一下"],
+    ["emoji-16", "吃惊了"],
+    ["emoji-17", "有点紧张"],
+    ["emoji-18", "让我想想"],
+    ["emoji-19", "捂住眼睛"],
+    ["emoji-20", "乖巧一下"],
+    ["emoji-21", "给你点赞"],
+    ["emoji-22", "鼓掌鼓掌"],
+    ["emoji-23", "举手欢呼"],
+    ["emoji-24", "双手合十"],
+    ["emoji-25", "盯着看"],
+    ["emoji-26", "亮闪闪"],
+    ["emoji-27", "庆祝一下"],
+    ["emoji-28", "给你的信"],
+    ["emoji-29", "送你郁金香"],
+    ["emoji-30", "喝杯热的"]
+  ].forEach(function(entry) {
+    var file = entry[0], url = './icons/stickers/' + file + '.png';
+    if (!stkData.items.some(function(item) { return item.url === url; })) {
+      stkData.items.push({ id: 'sk-mphone-' + file, name: entry[1], cat: defaultCat.id, url: url });
+    }
+  });
+  stkData.emojiPackCat = defaultCat.id;
+  stkData.emojiPackAdded = true;
+  saveStickers();
+}
 var stkCurCat = stkData.cats.length ? stkData.cats[0].id : '';
 
 function saveStickers() { mphoneStore.save('mphone_stickers', stkData); }
@@ -51,7 +98,15 @@ function findStickerLoose(name, pool) {
 }
 
 // 角色能用的表情包：没打开就是空的
-function stkCharCfg(char) { return (char && char.stickerCfg) || { on: false, cats: [] }; }
+function stkCharCfg(char) {
+  var cfg = char && char.stickerCfg || {};
+  var pack = stkCat(stkData.emojiPackCat || 'sc-mphone-defaults') || stkCatByName('自带');
+  return {
+    on: cfg.on !== false,
+    cats: Array.isArray(cfg.cats) ? cfg.cats : pack ? [pack.id] : [],
+    see: cfg.see !== false
+  };
+}
 function stkCharItems(char) {
   var cfg = stkCharCfg(char);
   if (!cfg.on) return [];
@@ -139,24 +194,72 @@ function stickerImageForAI(m, char) {
 // =============================================
 var stkGrid = document.getElementById('stkGrid');
 var stkTabs = document.getElementById('stkTabs');
+var stkDrawnCat = '';
+
+function moveStickerCategory(delta) {
+  var current = stkData.cats.findIndex(function(cat) { return cat.id === stkCurCat; });
+  var target = stkData.cats[current + delta];
+  if (target) {
+    stkCurCat = target.id;
+    renderStickerDrawer();
+  }
+}
+
+var stkSwipe = null, stkSwiped = false;
+stkGrid.addEventListener('pointerdown', function(event) {
+  if (!event.isPrimary || event.button !== 0) return;
+  stkSwiped = false;
+  stkSwipe = { id: event.pointerId, x: event.clientX, y: event.clientY };
+});
+stkGrid.addEventListener('pointermove', function(event) {
+  if (!stkSwipe || event.pointerId !== stkSwipe.id) return;
+  if (Math.abs(event.clientX - stkSwipe.x) > 12 || Math.abs(event.clientY - stkSwipe.y) > 12) stkSwiped = true;
+});
+stkGrid.addEventListener('pointercancel', function() { stkSwipe = null; });
+stkGrid.addEventListener('pointerup', function(event) {
+  if (!stkSwipe || event.pointerId !== stkSwipe.id) return;
+  var dx = event.clientX - stkSwipe.x, dy = event.clientY - stkSwipe.y;
+  stkSwipe = null;
+  if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+  stkSwiped = true;
+  moveStickerCategory(dx < 0 ? 1 : -1);
+});
+stkGrid.addEventListener('click', function(event) {
+  if (!stkSwiped || !event.detail) return;
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
 
 function renderStickerDrawer() {
-  if (!stkCat(stkCurCat)) stkCurCat = stkData.cats.length ? stkData.cats[0].id : '';
-  stkTabs.innerHTML = '';
+  if (!stkCat(stkCurCat)) {
+    stkCurCat = stkData.cats.length ? stkData.cats[0].id : '';
+  }
+  var oldCategory = stkDrawnCat;
+  var oldScroll = stkGrid.scrollTop;
+  var tabScroll = stkTabs.scrollLeft;
+  stkDrawnCat = stkCurCat;
+  stkTabs.replaceChildren();
   stkData.cats.forEach(function(c) {
     var b = document.createElement('button');
     b.className = 'stk-tab' + (c.id === stkCurCat ? ' active' : '');
     b.textContent = c.name;
+    b.setAttribute('aria-pressed', String(c.id === stkCurCat));
     bindPress(b, function() { stkCurCat = c.id; renderStickerDrawer(); }, function() { openStkCat(c); });
     stkTabs.appendChild(b);
   });
-  stkGrid.innerHTML = '';
-  stkGrid.scrollTop = 0;
+  stkTabs.scrollLeft = tabScroll;
+  var active = stkTabs.querySelector('.active');
+  if (active) {
+    var strip = stkTabs.getBoundingClientRect(), tab = active.getBoundingClientRect();
+    if (tab.left < strip.left) stkTabs.scrollLeft += tab.left - strip.left;
+    else if (tab.right > strip.right) stkTabs.scrollLeft += tab.right - strip.right;
+  }
+  stkGrid.replaceChildren();
   var items = stkItemsOf(stkCurCat);
   if (!items.length) {
     var empty = document.createElement('div');
     empty.className = 'stk-empty';
-    empty.textContent = stkData.cats.length ? '这个分类还没有表情包\n点右下角 ＋ 导入' : '还没有表情包\n点右下角 ＋ 用图床链接导入';
+    empty.textContent = stkData.cats.length ? '这个分类还没有表情包\n点菜单里的 ＋ 导入' : '还没有表情包\n点菜单里的 ＋ 导入';
     empty.style.whiteSpace = 'pre-line';
     stkGrid.appendChild(empty);
     return;
@@ -178,6 +281,7 @@ function renderStickerDrawer() {
     bindPress(item, function() { sendSticker(s); }, function() { openStkEdit(s); });
     stkGrid.appendChild(item);
   });
+  stkGrid.scrollTop = oldCategory === stkCurCat ? oldScroll : 0;
 }
 
 // 点表情包直接发出去（和键盘回车一样，只发自己的消息，不叫 AI）
@@ -639,7 +743,7 @@ var stkSetCats = document.getElementById('stkSetCats');
 var stkSetChar = null;
 
 function stkSetCfg() {
-  if (!stkSetChar.stickerCfg) stkSetChar.stickerCfg = { on: false, cats: [] };
+  stkSetChar.stickerCfg = stkCharCfg(stkSetChar);
   return stkSetChar.stickerCfg;
 }
 function renderStkSetCats() {
@@ -670,8 +774,6 @@ stkAiOn.addEventListener('change', function() {
   if (!stkSetChar) return;
   var cfg = stkSetCfg();
   cfg.on = this.checked;
-  // 第一次打开时先把现有分类都选上，再按需要去掉
-  if (cfg.on && !cfg.cats.length) cfg.cats = stkData.cats.map(function(c) { return c.id; });
   saveCharList();
   renderStkSetCats();
 });

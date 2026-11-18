@@ -3,7 +3,7 @@
 // 只处理本站文件，AI / 语音 / 生图等外部接口请求完全不经过这里。
 
 // 文件拆分后 css/、js/ 也要预先缓存；改动这个列表时把版本号加一
-const V = '127';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
+const V = '128';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = SCOPE.pathname === '/' ? 'mphone-v' : 'mphone:' + SCOPE.pathname + ':v';
 const CACHE = CACHE_PREFIX + V;
@@ -30,8 +30,12 @@ const JS = ['core/store', 'core/boot', 'core/utils', 'core/backup-format', 'desk
             'settings/backup', 'chat/calendar', 'core/errors', 'char/archive', 'chat/opening', 'desk/places', 'desk/pet', 'chat/assets', 'chat/group', 'chat/group-play', 'settings/whatsnew', 'prompt/wb-builtin', 'desk/blindbox', 'desk/letters', 'desk/greenhouse', 'desk/starjar', 'desk/books', 'chat/moments', 'char/life', 'char/migrate', 'prompt/wb-import', 'settings/transfer']
   .map(function (n) { return './js/' + n + '.js?v=' + V; });
 const CORE = ['./', './index.html', './manifest.webmanifest',
-              './icons/icon.png', './icons/logo.png', './icons/badge.png', './icons/mianin.jpg']
+              './icons/icon.png', './icons/logo.png', './icons/badge.png', './icons/mianin.jpg',
+              './icons/stickers/little-heart.png', './icons/stickers/happy-face.png']
   .concat(CSS, JS)
+  .concat(Array.from({ length: 28 }, function (_, i) {
+    return './icons/stickers/emoji-' + String(i + 3).padStart(2, '0') + '.png';
+  }))
   .concat(['paper', 'soft'].reduce(function (a, s) {   // 桌面图标风格（css/desk/iconsets.css）
     return a.concat(['notes', 'memory', 'greenhouse', 'starjar', 'lighthouse', 'meet', 'pet', 'letters', 'settings', 'appearance', 'chat', 'prompt']
       .map(function (n) { return './icons/desk/' + s + '/' + n + '.png'; }));

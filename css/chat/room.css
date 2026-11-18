@@ -155,9 +155,8 @@
   border-top-color: rgba(200, 165, 165, 0.42);
 }
 
-/* 加号 / 表情包抽屉内容区固定为两排图标的高度 */
-.cr-plus-grid,
-.cr-emoji-panel-body {
+/* 加号抽屉内容区固定为两排图标的高度 */
+.cr-plus-grid {
   height: 160px;
 }
 
