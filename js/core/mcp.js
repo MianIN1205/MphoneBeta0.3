@@ -267,10 +267,11 @@ mcpOnInput.addEventListener('change', function() { mcpCfg.on = this.checked; sav
 mcpConfirmInput.addEventListener('change', function() { mcpCfg.confirm = this.checked; mcpLease = null; saveMcpServers(); });
 
 function renderMcpServers() {
+  renderMcpFlomo();
   if (typeof renderMcpTakeout === 'function') renderMcpTakeout();
   var box = document.getElementById('mcpServerList');
   box.innerHTML = '';
-  var own = mcpServers.filter(function(sv) { return !sv.takeout; });
+  var own = mcpServers.filter(function(sv) { return !sv.takeout && !sv.flomo; });
   if (!own.length) {
     var empty = document.createElement('div');
     empty.className = 'auto-hint';
@@ -358,6 +359,54 @@ document.getElementById('mcpAddBtn').addEventListener('click', function() {
   }, function() {
     showToast('✗ 没连上「' + sv.name + '」，可以稍后点「重新连接」', 'error');
   });
+});
+
+var MCP_FLOMO_URL = 'https://flomoapp.com/mcp';
+var mcpFlomoForm = document.getElementById('mcpFlomoForm');
+var mcpFlomoToken = document.getElementById('mcpFlomoToken');
+var mcpFlomoConnect = document.getElementById('mcpFlomoConnect');
+var mcpFlomoDisconnect = document.getElementById('mcpFlomoDisconnect');
+var mcpFlomoStatus = document.getElementById('mcpFlomoStatus');
+
+function mcpFlomoServer() {
+  return mcpServers.find(function(server) { return server.flomo; });
+}
+function renderMcpFlomo() {
+  var server = mcpFlomoServer();
+  var status = server && mcpStatus[server.id];
+  var busy = status && status.state === 'busy';
+  var connected = server && (status ? status.state === 'ok' : Array.isArray(server.tools));
+  mcpFlomoStatus.className = 'mcp-server-status' + (status ? ' ' + status.state : '');
+  mcpFlomoStatus.textContent = status ? status.text : connected ? '已保存连接 · ' + server.tools.length + ' 个工具' : '尚未连接';
+  mcpFlomoToken.hidden = !!connected;
+  mcpFlomoToken.required = !connected;
+  mcpFlomoConnect.hidden = !!connected;
+  mcpFlomoConnect.disabled = !!busy;
+  mcpFlomoDisconnect.hidden = !server;
+  mcpFlomoDisconnect.disabled = !!busy;
+}
+mcpFlomoForm.addEventListener('submit', function(event) {
+  event.preventDefault();
+  var token = mcpFlomoToken.value.trim().replace(/^Bearer\s+/i, '');
+  if (!token || mcpFlomoConnect.disabled || mcpFlomoConnect.hidden) return;
+  var server = mcpFlomoServer() || mcpServers.find(function(entry) { return entry.url.replace(/\/$/, '') === MCP_FLOMO_URL; });
+  if (!server) {
+    server = { id: 'mcp-flomo', name: 'flomo', url: MCP_FLOMO_URL };
+    mcpServers.push(server);
+  }
+  Object.assign(server, { flomo: true, token: token, enabled: true, tools: null });
+  mcpFlomoToken.value = '';
+  saveMcpServers();
+  mcpRefreshServer(server).catch(function() {});
+});
+mcpFlomoDisconnect.addEventListener('click', function() {
+  var server = mcpFlomoServer();
+  if (!server) return;
+  mcpServers = mcpServers.filter(function(entry) { return entry !== server; });
+  delete mcpSessions[server.id];
+  delete mcpStatus[server.id];
+  saveMcpServers();
+  renderMcpServers();
 });
 
 renderMcpServers();
