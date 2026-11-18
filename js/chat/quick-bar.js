@@ -260,7 +260,7 @@ function renderQuickPop() {
     // 世界书可多选：点一本 = 整本关联 / 取消；点「条目」展开，一条条单独勾（用户要的），弹层不收起
     // 只换当前窗口（聊天 / 剧情）那栏的
     var groups = wbGroups(), wbDrama = currentCrSubView === 'contacts';
-    if (wbDrama && !char.dramaWb) char.dramaWb = { ids: (char.worldbookIds || []).slice(), folders: (char.worldbookFolders || []).slice() };
+    if (wbDrama && !char.dramaWb) char.dramaWb = { ids: [], folders: [] };
     var setWb = function(folders, ids) {
       if (wbDrama) { char.dramaWb.folders = folders; char.dramaWb.ids = ids; } else { char.worldbookFolders = folders; char.worldbookIds = ids; }
       saveCharList();

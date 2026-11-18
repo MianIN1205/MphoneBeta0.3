@@ -659,9 +659,9 @@ function fillCharForm(char) {
   setLookPartForm('chat');
   setAutoForm(char.auto);
   setChatCfgForm(char.chatCfg);
-  // 世界书分「聊天窗口 / 剧情窗口」两栏各自关联（用户要的）；剧情还没单独设置过时先照聊天的勾
+  // 世界书分「聊天窗口 / 剧情窗口」两栏各自关联（用户要的）；剧情还没单独设置过时从空白开始
   var wbChat = { ids: (char.worldbookIds || []).slice(), folders: (char.worldbookFolders || []).slice() };
-  csWbParts = { chat: wbChat, drama: char.dramaWb ? { ids: (char.dramaWb.ids || []).slice(), folders: (char.dramaWb.folders || []).slice() } : JSON.parse(JSON.stringify(wbChat)) };
+  csWbParts = { chat: wbChat, drama: char.dramaWb ? { ids: (char.dramaWb.ids || []).slice(), folders: (char.dramaWb.folders || []).slice() } : { ids: [], folders: [] } };
   csWbView = 'chat';
   csWbPendingOn = true;
   renderCharWbLinks(wbChat.ids, wbChat.folders);

@@ -301,9 +301,12 @@ wbDetailDelete.classList.add('hidden');
 renderWbList();
 
 // 取出某角色当前应注入的世界书条目：已关联（整个文件夹或单个条目）且（无关键词 或 最近 6 条消息里出现任一关键词）
-// drama：剧情窗口用「剧情窗口」那栏的关联（角色设置里分开勾的；没单独设置过就和聊天一样）
+// drama：剧情窗口用「剧情窗口」那栏的关联（角色设置里分开勾的；没单独设置过就不关联）
 function charWbOf(char, drama) {
-  if (drama && char && char.dramaWb) return { ids: char.dramaWb.ids || [], folders: char.dramaWb.folders || [] };
+  if (drama) {
+    var selection = (char && char.dramaWb) || {};
+    return { ids: selection.ids || [], folders: selection.folders || [] };
+  }
   return { ids: (char && char.worldbookIds) || [], folders: (char && char.worldbookFolders) || [] };
 }
 function getActiveWbEntries(char, hist, drama) {
