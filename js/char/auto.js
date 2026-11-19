@@ -165,6 +165,11 @@ function autoDelay(a) {
   return Math.max(1, mins) * 60000;
 }
 
+function autoMessagePlan(a, now, sig) {
+  var delay = autoDelay(a);
+  return { at: now + delay, sig: sig, delay: delay };
+}
+
 function autoTick() {
   var now = Date.now(), changed = false;
   charList.forEach(function(char, idx) {
@@ -182,23 +187,30 @@ function autoTick() {
         return null;
       }
       if (!plan[kind] || plan[kind].sig !== sig || !Number.isFinite(plan[kind].at)) {
-        plan[kind] = { at: now + autoDelay(a), sig: sig };
+        plan[kind] = kind === 'msg' ? autoMessagePlan(a, now, sig) : { at: now + autoDelay(a), sig: sig };
         changed = true;
       }
       return plan[kind];
     }
     var msg = nextFor('msg', a.msgOn, interval);
     var post = nextFor('post', a.postOn, interval);
+    if (msg && (!Number.isFinite(msg.delay) || msg.delay < 60000)) {
+      msg.delay = autoDelay(a); // 旧排期只保存了到期时间，没有保存抽中的间隔
+      changed = true;
+    }
     if (char._autoBusy || (typeof genBusyChar === 'function' && genBusyChar(char))) return;
     var viewing = appChatRoom.classList.contains('active') && openingChatCharIdx === idx;
     var history = getChatHistory(idx), last = history[history.length - 1];
-    var activeAt = Math.max(char._lastChatAt || 0, (last && last.time) || 0);
-    var messageDue = msg && now >= msg.at && !viewing && now - activeAt >= AUTO_QUIET_MS;
+    var lastMessageAt = (last && last.time) || 0;
+    var activeAt = Math.max(char._lastChatAt || 0, lastMessageAt);
+    // 重开时可以沿用保存的排期，但最近发过消息的话，必须重新等够聊天间隔。
+    var messageDue = msg && now >= Math.max(msg.at, lastMessageAt + msg.delay)
+      && !viewing && now - activeAt >= AUTO_QUIET_MS;
     var postDue = post && now >= post.at;
     if (!messageDue && !postDue) return;
     var run;
     if (messageDue) {
-      msg.at = now + autoDelay(a);
+      plan.msg = autoMessagePlan(a, now, interval);
       changed = true;
       run = autoSendMessage;
     } else if (postDue) {
