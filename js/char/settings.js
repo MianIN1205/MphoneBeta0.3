@@ -488,6 +488,35 @@ function readLookForm() {
 var csLookView = 'chat';
 var csRoomLookView = null;
 var csLookParts = { chat: {}, drama: {} };
+function dramaStatusPrefs(char) {
+  var old = char && char.look || {};
+  var saved = char && char.dramaLook && char.dramaLook.look && char.dramaLook.look.dramaStatus;
+  if (!saved) {
+    return old.statusDrama
+      ? { on: !!old.statusOn, place: 'title', mode: 'fold', template: 'chat' }
+      : { on: false, place: 'reply', mode: 'fold', template: 'simple' };
+  }
+  return {
+    on: !!saved.on,
+    place: saved.place === 'title' ? 'title' : 'reply',
+    mode: saved.mode === 'show' ? 'show' : 'fold',
+    template: saved.template === 'chat' ? 'chat' : 'simple'
+  };
+}
+var dramaStatusOn = document.getElementById('dramaStatusOn');
+var dramaStatusPlace = document.getElementById('dramaStatusPlace');
+var dramaStatusMode = document.getElementById('dramaStatusMode');
+var dramaStatusTemplate = document.getElementById('dramaStatusTemplate');
+var csDramaStatusWrap = document.getElementById('csDramaStatusWrap');
+function syncDramaStatusForm() {
+  document.getElementById('dramaStatusOptions').hidden = !dramaStatusOn.checked;
+  document.getElementById('dramaStatusModeRow').hidden = dramaStatusPlace.value !== 'reply';
+}
+csDramaStatusWrap.addEventListener('change', function() {
+  syncDramaStatusForm();
+  clearTimeout(csLookTimer);
+  liveApplyLook();
+});
 function lookPartsOf(char) {
   // 两边各拷一份，互不牵连；剧情窗口没单独设置过时只借聊天窗口的背景和颜色（viewLookPart，不带聊天的 CSS 和聊天专用的气泡模板）
   var cp = function(x) { var o = JSON.parse(JSON.stringify(x)); delete o._borrowed; o.customCss = o.customCss || ''; return o; };
@@ -497,10 +526,14 @@ function lookPartsOf(char) {
   return parts;
 }
 function readLookPartForm() {
+  var look = readLookForm();
+  if (csLookView === 'drama') {
+    look.dramaStatus = { on: dramaStatusOn.checked, place: dramaStatusPlace.value, mode: dramaStatusMode.value, template: dramaStatusTemplate.value };
+  }
   return {
     chatBg:    { color: selectedChatBgColor, image: selectedChatBgImage },
     bubble:    readBubbleForm(),
-    look:      readLookForm(),
+    look:      look,
     customCss: customCssInput.value
   };
 }
@@ -512,6 +545,15 @@ function setLookPartForm(view) {
   customCssInput.value = p.customCss || '';
   if (typeof customCssPresetBox !== 'undefined') customCssPresetBox.refresh();
   document.getElementById('csStatusWrap').style.display = view === 'chat' ? '' : 'none';
+  csDramaStatusWrap.hidden = view !== 'drama';
+  if (view === 'drama') {
+    var status = dramaStatusPrefs({ look: csLookParts.chat.look, dramaLook: p });
+    dramaStatusOn.checked = status.on;
+    dramaStatusPlace.value = status.place;
+    dramaStatusMode.value = status.mode;
+    dramaStatusTemplate.value = status.template;
+    syncDramaStatusForm();
+  }
   document.getElementById('csBgLabel').textContent = view === 'drama' ? '剧情背景' : '聊天背景';
   var background = document.getElementById('csLookBackground');
   document.getElementById(view === 'drama' ? 'csLookLayout' : 'csDramaFmtWrap').before(background);
@@ -630,7 +672,7 @@ function scheduleLiveLook() {
 }
 ['click', 'input', 'change'].forEach(function(ev) {
   document.getElementById('csLookPage').addEventListener(ev, function(e) {
-    if (e.target.closest('#csLookViewRow')) return;
+    if (e.target.closest('#csLookViewRow, #csDramaStatusWrap')) return;
     scheduleLiveLook();
   });
 });

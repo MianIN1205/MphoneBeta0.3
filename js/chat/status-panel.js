@@ -101,8 +101,8 @@ function statusRegexRender(spec, s) {
   return m[0].replace(re, String(spec.tpl || '').replace(/\{\{\s*match\s*\}\}/gi, '$$&'));
 }
 // 边生成边出气泡时，状态栏那段不要冒出来：从它开头的地方截掉
-function statusStreamCut(char, text) {
-  var look = Object.assign({}, DEFAULT_LOOK, (char && char.look) || {});
+function statusStreamCut(char, text, drama) {
+  var look = statusLookFor(char, drama);
   var spec = look.statusOn ? statusSpec(look) : null;
   if (!spec) return text;
   var tag = statusRegexTag(spec.find), cut = text.length;
@@ -150,6 +150,54 @@ function fillStatusTpl(tpl, vals, char) {
 
 function statusPanelOpen() { return crStatusPanel.classList.contains('open'); }
 
+function statusPanelAvailable(char) {
+  return currentCrSubView !== 'contacts' || (statusOnFor(char, true) && dramaStatusPrefs(char).place === 'title');
+}
+
+function statusCardMarkup(look, body) {
+  return statusFontFollow('<style>:host{display:block}' + (look.statusCss || '') + '</style>' + body);
+}
+
+function syncDramaInlineStatus(row, char, prefs, look) {
+  var m = row._msg;
+  var mode = m && m.status && !m.recalled && prefs && prefs.on && prefs.place === 'reply' ? prefs.mode : '';
+  if (row._dramaStatus && row._dramaStatusMode === mode) return;
+  if (row._dramaStatus) {
+    row._dramaStatus.remove();
+    row._extras = row._extras.filter(function(el) { return el !== row._dramaStatus; });
+    row._dramaStatus = null;
+  }
+  if (!mode) return;
+
+  var wrap = document.createElement(mode === 'fold' ? 'details' : 'div');
+  wrap.className = 'cr-drama-status';
+  if (mode === 'fold') {
+    var trigger = document.createElement('summary');
+    trigger.textContent = '状态档案';
+    wrap.appendChild(trigger);
+  }
+  var sb = statusBodyOf(char, look, m);
+  var card = document.createElement('div');
+  card.className = 'cr-drama-status-body' + (sb.lined ? ' cr-status-lined' : '');
+  var root = card.attachShadow({ mode: 'open' });
+  root.innerHTML = statusCardMarkup(look, sb.body);
+  // 位置设置决定卡片外层的折叠。已导入模板的顶层 details 展开，模板内部的小折叠仍可操作。
+  Array.from(root.children).forEach(function(el) { if (el.tagName === 'DETAILS') el.open = true; });
+  wrap.appendChild(card);
+  row._dramaStatus = wrap;
+  row._dramaStatusMode = mode;
+  row._extras.push(wrap);
+  (row._dramaRecap && row._dramaRecap.isConnected ? row._dramaRecap : row).after(wrap);
+}
+
+function refreshDramaInlineStatuses(char) {
+  var prefs = char ? dramaStatusPrefs(char) : null;
+  var look = prefs && prefs.on && prefs.place === 'reply' ? statusLookFor(char, true) : null;
+  document.querySelectorAll('#dramaMsgList > .chat-msg-row').forEach(function(row) {
+    syncDramaInlineStatus(row, char, prefs, look);
+  });
+}
+
 // 状态栏的字体：默认跟着小手机（外观里设的字体），用户要的。模板（尤其酒馆来的）常写「Microsoft YaHei, Segoe UI, Arial」这类电脑上的通用字体，
 // 手机上没有就退回系统字、和小手机不一样：这种只写了通用字体的 font-family 当没写；写了特别的字体（自己引入的手写体之类）就照它的
 var STATUS_GENERIC_FONTS = /^(microsoft yahei( ui)?|微软雅黑|microsoft jhenghei|pingfang( sc| tc| hk)?|hiragino sans( gb)?|heiti( sc| tc)?|黑体|simhei|simsun|宋体|nsimsun|noto sans( sc| cjk sc| cjk)?|source han sans( sc| cn)?|思源黑体|segoe ui|arial|helvetica( neue)?|sans-serif|system-ui|-apple-system|blinkmacsystemfont|roboto|tahoma|verdana|ui-sans-serif|inherit|initial|unset|\s*)$/i;
@@ -180,7 +228,7 @@ function statusCardEl(char, look, needLast) {
   wrap.className = 'cr-action-status-preview';
   var card = document.createElement('div');
   card.className = 'cr-status-card' + (lined ? ' cr-status-lined' : '');
-  card.attachShadow({ mode: 'open' }).innerHTML = statusFontFollow('<style>:host{display:block}' + (look.statusCss || '') + '</style>' + body);
+  card.attachShadow({ mode: 'open' }).innerHTML = statusCardMarkup(look, body);
   wrap.appendChild(card);
   return wrap;
 }
@@ -188,14 +236,13 @@ function renderStatusPanel() {
   var char = charList[openingChatCharIdx];
   crStatusPanel.innerHTML = '';
   if (!char) return;
-  var look = Object.assign({}, DEFAULT_LOOK, char.look || {}), drama = currentCrSubView === 'contacts';
+  var drama = currentCrSubView === 'contacts', look = statusLookFor(char, drama);
   // 从旧到新排成一行，打开时停在最新一条；往右滑看更早的；剧情窗口看剧情里的状态栏
   var all = ((drama ? dramaHistories : chatHistories)[char.id] || []).filter(function(m) { return m.status && !m.recalled; }).slice(drama ? -STATUS_HISTORY_DRAMA : -STATUS_HISTORY);
   if (!all.length) {
     var empty = document.createElement('div');
     empty.className = 'cr-sp-empty';
-    empty.textContent = drama && look.statusOn && !look.statusDrama ? '剧情窗口还没开状态栏，可以在角色设置 →「美化」→「状态栏」里打开「剧情窗口也写状态栏」'
-      : look.statusOn ? '还没有状态，等角色下一次回复吧' : '还没有状态栏，可以在角色设置 →「美化」→「状态栏」里开启';
+    empty.textContent = look.statusOn ? '还没有状态，等角色下一次回复吧' : '还没有状态栏，可以在角色设置 →「美化」→「状态栏」里开启';
     crStatusPanel.appendChild(empty);
     return;
   }
@@ -215,7 +262,7 @@ function renderStatusPanel() {
     var card = document.createElement('div');
     card.className = 'cr-status-card' + (lined ? ' cr-status-lined' : '');
     var root = card.attachShadow({ mode: 'open' });
-    var cardHtml = statusFontFollow('<style>:host{display:block}' + (look.statusCss || '') + '</style>' + body);
+    var cardHtml = statusCardMarkup(look, body);
     root.innerHTML = cardHtml;
     item.appendChild(time);
     // 卡片放在自己的框里上下滑；下面的 删除 / 收藏 / 关闭 固定不动（用户要的：状态栏太长时也看得到按钮）
@@ -276,6 +323,7 @@ function renderStatusPanel() {
 }
 
 function openStatusPanel() {
+  if (!statusPanelAvailable(charList[openingChatCharIdx])) return;
   // 面板从顶栏（开了便捷拓展栏就从拓展栏）下沿开始
   var under = appChatRoom.classList.contains('cr-qb-on') && !appChatRoom.classList.contains('cr-qb-in-nav') ? document.getElementById('crQuickBar') : appChatRoom.querySelector('.settings-nav');
   var roomRect = appChatRoom.getBoundingClientRect(), roomTop = roomRect.top, top = under.getBoundingClientRect().bottom - roomTop;
@@ -310,7 +358,7 @@ function closeStatusPanel() {
 // 新回复到达、角色设置改动后：面板开着就刷新
 function refreshStatusPanel() {
   if (!statusPanelOpen()) return;
-  if (!appChatRoom.classList.contains('active') || !charList[openingChatCharIdx]) closeStatusPanel();
+  if (!appChatRoom.classList.contains('active') || !charList[openingChatCharIdx] || !statusPanelAvailable(charList[openingChatCharIdx])) closeStatusPanel();
   else renderStatusPanel();
 }
 

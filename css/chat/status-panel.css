@@ -72,3 +72,24 @@
 /* 小梦改状态栏的确认卡片里的效果图（js/chat/status-panel.js 的 statusPreviewEl） */
 .cr-action-status-preview { max-height: 240px; overflow: auto; margin: 6px 0 4px; border-radius: 10px; }
 .cr-action-status-preview .cr-status-card { margin: 0; max-width: none; }
+
+.cr-drama-status {
+  align-self: flex-start; width: min(calc(100% - 58px), 280px);
+  margin: -5px 0 0 40px; color: #826e7b;
+}
+#appChatRoom.cr-no-avatar .cr-drama-status { margin-left: 0; }
+.cr-drama-status > summary {
+  width: fit-content; padding: 3px 7px 3px 0; cursor: pointer;
+  font-size: 11px; line-height: 1.4;
+}
+.cr-drama-status[open] .cr-drama-status-body { margin-top: 4px; }
+.cr-drama-status-body.cr-status-lined {
+  padding: 8px 10px; border: 1px solid #ead8e1; border-radius: 10px;
+  background: #fff9fb; color: #614e59; font-size: 12px; line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.drama-status-settings select.field-input {
+  width: auto; min-width: 112px; max-width: 56%; margin: 0; padding: 5px 7px;
+  font-size: 12px;
+}
+#dramaStatusModeRow[hidden] { display: none; }

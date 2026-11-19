@@ -261,7 +261,9 @@ function renderHistMsgContent(m, list, empty) {
     list._altTime = 0;
   }
   var thinkBar = m.think && m.role === 'assistant' ? renderThinkBar(m, list) : null;
-  if (m.status && list.id === 'chatMsgList') appChatRoom.classList.add('cr-has-status');   // 第一条状态栏来了，名字旁边的小箭头跟着出来
+  if (m.status && list === getActiveMsgListEl() && (list.id === 'chatMsgList' || statusPanelAvailable(charList[openingChatCharIdx]))) {
+    appChatRoom.classList.add('cr-has-status');   // 第一条状态栏来了，名字旁边的小箭头跟着出来
+  }
   var toolLead = m.mcpLead && renderMcpNotice(m.mcpLead);
   if (toolLead) list.appendChild(toolLead);
   if (m.recalled && !m._flash) return renderRecallNotice(m, list, empty);
@@ -302,6 +304,10 @@ function renderHistMsgContent(m, list, empty) {
   }
   if (list.id === 'dramaMsgList') addDramaHead(r.row, r.bubble, m);
   if (list.id === 'dramaMsgList' && m.recap && typeof dramaRecapLine === 'function') dramaRecapLine(r.row, m);
+  if (list === document.getElementById('dramaMsgList') && m.status) {
+    var char = charList[openingChatCharIdx];
+    syncDramaInlineStatus(r.row, char, dramaStatusPrefs(char), statusLookFor(char, true));
+  }
   if (m.quote) r.row._extras.push(appendQuoteBlock(list, m.quote, role));
   if (m.alts && m.alts.length > 1) { r.row._extras.push(appendAltSwitch(list, m)); list._altTime = m.time || 1; }
   // 角色刚发就撤回的：先正常显示两秒半，再换成「撤回了一条消息」

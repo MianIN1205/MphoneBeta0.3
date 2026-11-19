@@ -54,8 +54,9 @@ function commitAssistantReply(hist, raw, list, empty, firstMeta) {
   });
   var st = takeStatus(raw);
   raw = st.text; status = st.status;
-  // 状态栏：角色照规则写，用正则认出来（聊天窗口；剧情窗口开了「也写状态栏」时也认）
-  var sc = charOfHistory(hist), sLook = sc && (chatHistories[sc.id] === hist || (dramaHistories[sc.id] === hist && statusOnFor(sc, true))) ? Object.assign({}, DEFAULT_LOOK, sc.look || {}) : null;
+  // 状态栏：聊天和剧情按各自选中的规则提取并渲染。
+  var sc = charOfHistory(hist), sDrama = !!(sc && dramaHistories[sc.id] === hist);
+  var sLook = sc && (chatHistories[sc.id] === hist || (sDrama && statusOnFor(sc, true))) ? statusLookFor(sc, sDrama) : null;
   var sSpec = sLook && sLook.statusOn ? statusSpec(sLook) : null;
   if (sSpec && typeof statusRegexTake === 'function') {
     var rt = statusRegexTake(sSpec, status || raw);
@@ -519,7 +520,7 @@ function sendMsg(userText, requestOnly, onDone) {
       typing.bubble.classList.remove('cr-tool-status');
       if (isGrp) { scrollLive(); return; }   // 群聊：收完再一条条出来，中间只显示「正在输入」
       // 导入的酒馆状态栏那段不在聊天里冒出来
-      var liveText = ((isChatView || statusOnFor(replyChar, true)) && typeof statusStreamCut === 'function') ? statusStreamCut(replyChar, aiText) : aiText;
+      var liveText = statusStreamCut(replyChar, aiText, !isChatView);
       // 操作块不直接显示原始代码，写完后会变成确认卡片
       var hidden = replyHideTags(liveText);   // 标签表里的都先藏掉
       var shown = hidden.replace(/<mphone-action>[\s\S]*?(<\/mphone-action>|$)/g, '⚙️').trim();

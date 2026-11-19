@@ -79,15 +79,42 @@ function chatFormatRules(char) {
   if (!(typeof readerOpenWith === 'function' && readerOpenWith(char))) statusRulesFor(char, false).forEach(function(r) { rules.push(r); });   // 在书里一起看时先不要状态栏
   return rules.length ? [{ role: 'system', content: '【回复格式】' + rules.join('\n') }] : [];
 }
-// 状态栏用在哪个窗口：聊天窗口开了就有；剧情窗口要另外打开「剧情窗口也写状态栏」（用户要的，能开能关），两边用同一套写法
-function statusOnFor(char, drama) {
+var DRAMA_STATUS_FIELDS = [
+  ['时间', '沿用剧情里的时间或时段'], ['地点', '当前所在的小场景'],
+  ['举动', '从这一轮挑一个能看出你性格或习惯的小动作'],
+  ['想要', '此刻想争取、守住或避开的事，贴合这一幕'],
+  ['心声', '用你自己的口吻，写一句没有说出口的话'],
+  ['关于你', '写下你从对方的话或动作里留意到的一个细节，或它让你产生的反应']
+];
+var DRAMA_STATUS_SIMPLE = {
+  statusFind: '<mztl1>\\s*' + DRAMA_STATUS_FIELDS.map(function(field) {
+    return '[ \\t]*' + field[0] + '[:：][ \\t]*([^\\r\\n]+)[ \\t]*\\r?\\n';
+  }).join('') + '[ \\t]*<\\/mztl1>',
+  statusTpl: '<div style="background:#fff9fb;color:#493c43;border:1px solid #ead8e1;border-radius:12px;padding:10px 12px;display:grid;gap:5px;font-size:12px;line-height:1.5;overflow-wrap:anywhere">' +
+    DRAMA_STATUS_FIELDS.map(function(field, index) {
+      return '<div style="display:grid;grid-template-columns:3.4em minmax(0,1fr);gap:6px;' +
+        (index === 2 ? 'border-top:1px solid #eddee5;padding-top:6px;margin-top:1px;' : '') +
+        '"><span style="color:#866470">' + field[0] + '</span><span>$' + (index + 1) + '</span></div>';
+    }).join('') + '</div>',
+  statusRules: '从角色自己的视角写，贴合人设、关系和这一幕。每项一行，简短填写，避免重述正文和揣测对方没表现出来的心理；开头和结尾标签都要完整。格式如下：\n<mztl1>\n' +
+    DRAMA_STATUS_FIELDS.map(function(field) { return field.join('：'); }).join('\n') + '\n</mztl1>',
+  statusCss: ''
+};
+function statusLookFor(char, drama) {
   var look = Object.assign({}, DEFAULT_LOOK, (char && char.look) || {});
-  return !!(char && !char.isGroup && look.statusOn && (!drama || look.statusDrama));
+  if (!drama) return look;
+  var pref = dramaStatusPrefs(char);
+  return Object.assign(look, pref.template === 'simple' ? DRAMA_STATUS_SIMPLE : {}, { statusOn: pref.on });
+}
+
+function statusOnFor(char, drama) {
+  return !!(char && !char.isGroup && (drama ? dramaStatusPrefs(char).on : char.look && char.look.statusOn));
 }
 // 状态栏：照「生成规则」写，小手机用正则认出来画成卡片（statusSpec，见 js/char/settings.js）
 function statusRulesFor(char, drama) {
-  var rules = [], look = Object.assign({}, DEFAULT_LOOK, char.look || {});
+  var rules = [];
   if (statusOnFor(char, drama)) {
+    var look = statusLookFor(char, drama);
     var spec = statusSpec(look);
     if (spec) {
       // 和酒馆的正则状态栏一样：照「生成规则」写，格式、外层标签都照规则来；没写规则就照正则的格式
@@ -100,8 +127,13 @@ function statusRulesFor(char, drama) {
                  '保留模板里的标签和样式，只把内容换成你此刻的真实状态。\n' + fillMacros(statusTplOf(look), char));
     }
     // 接着上一次的状态写，数值不会忽高忽低
-    var prev = lastStatusOf((drama ? dramaHistories : chatHistories)[char.id]);
-    if (prev) rules.push('你上一次的状态是：' + prev + '\n这次在它的基础上按刚才发生的事自然变化，没变的项照抄，数值不要无故大起大落。');
+    var simpleDrama = drama && dramaStatusPrefs(char).template === 'simple';
+    var prev = lastStatusOf((drama ? dramaHistories : chatHistories)[char.id], simpleDrama ? function(raw) {
+      return !!statusRegexMatch(DRAMA_STATUS_SIMPLE.statusFind, raw).m;
+    } : null);
+    if (prev) rules.push('你上一次的状态是：' + prev + (simpleDrama
+      ? '\n时间地点没变化就沿用，其他项根据这一幕来写。'
+      : '\n这次在它的基础上按刚才发生的事自然变化，没变的项照抄，数值不要无故大起大落。'));
   }
   return rules;
 }
@@ -548,10 +580,10 @@ function msgContentForAI(m, rich, char) {
 }
 
 // 记录里最近一次的状态栏内容（去掉 HTML，太长截断）
-function lastStatusOf(hist) {
+function lastStatusOf(hist, accept) {
   for (var i = (hist || []).length - 1; i >= 0; i--) {
     var s = hist[i].status;
-    if (s) {
+    if (s && (!accept || accept(s))) {
       s = String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       return s.length > 400 ? s.slice(0, 400) + '…' : s;
     }

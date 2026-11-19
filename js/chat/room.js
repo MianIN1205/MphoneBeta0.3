@@ -62,7 +62,8 @@ function dramaBoxCss(sel, look) {
     (lay === 'center' ? cont.join(', ') + ' { grid-template-areas: "text"; }\n' : '') +
     cont.map(function(s) { return s + ' > .chat-msg-avatar, ' + s + ' > .cr-msg-head'; }).join(', ') + ' { display: none; }\n' +
     hasNext.join(', ') + ' { border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 4px; }\n' +
-    sel + ' + .cr-recap-line { margin-left: 14px; }\n';
+    sel + ' + .cr-recap-line, ' + sel + ' + .cr-drama-status, ' +
+    sel + ' + .cr-recap-line + .cr-drama-status { margin-left: 14px; }\n';
   if (look.boxMeta === false) css += row + ' .cr-head-meta { display: none; }\n';
   if (look.boxActs === false) css += row + ' .cr-head-acts { display: none; }\n';
   return css;
@@ -291,16 +292,17 @@ function applyChatRoomStyle(char) {
   paintCharAvatar(document.getElementById('chatRoomHeadAv'), char);
   // 有状态栏时顶上名字右边一个很小的朝下箭头：让人知道点名字能看状态栏（用户要的，自然一点的提示）
   var stDrama = currentCrSubView === 'contacts';
-  appChatRoom.classList.toggle('cr-has-status', statusOnFor(char, stDrama) && ((stDrama ? dramaHistories : chatHistories)[char.id] || []).some(function(m) { return m.status; }));
+  var showTitleStatus = statusOnFor(char, stDrama) && (!stDrama || dramaStatusPrefs(char).place === 'title');
+  appChatRoom.classList.toggle('cr-has-status', showTitleStatus && ((stDrama ? dramaHistories : chatHistories)[char.id] || []).some(function(m) { return m.status && !m.recalled; }));
   if (typeof paintChatSubTitle === 'function') paintChatSubTitle(char);
 
   crQbPlace(!!tplBgColor(part));   // 仿siya：拓展栏挤进顶栏那一行（用户要的：顶栏太空）
 
-  // 状态栏样式只属于聊天窗口
-  var chatLook = Object.assign({}, DEFAULT_LOOK, char.look || {});
+  var activeStatusLook = statusLookFor(char, stDrama);
   crCharStyleEl.textContent = lookCss(part, '#appChatRoom') +
-    (currentCrSubView === 'contacts' && !chatLook.statusDrama ? '' : (chatLook.statusCss || '')) + '\n' +
+    (stDrama && !activeStatusLook.statusOn ? '' : (activeStatusLook.statusCss || '')) + '\n' +
     (part.customCss || '');
+  if (stDrama && typeof refreshDramaInlineStatuses === 'function') refreshDramaInlineStatuses(char);
   if (typeof renderQuickBar === 'function') renderQuickBar();
   if (typeof refreshStatusPanel === 'function') refreshStatusPanel();
 }
