@@ -474,6 +474,15 @@
   border: 0; border-radius: 7px; background: transparent;
   color: #91677b; font-family: inherit; font-size: 19px; touch-action: none; cursor: grab;
 }
+.wb-folder .prompt-drag-grip {
+  display: grid; place-items: center;
+  color: #ae929f; font-size: 0;
+}
+.wb-folder .prompt-drag-grip::before {
+  content: ''; width: 13px; height: 1.5px; border-radius: 2px;
+  background: currentColor;
+  box-shadow: 0 -4px currentColor, 0 4px currentColor;
+}
 .prompt-dragging .prompt-drag-grip { cursor: grabbing; }
 .prompt-drag-source { opacity: .48; }
 .prompt-drop-before { box-shadow: 0 -2px #c07895; }
@@ -481,6 +490,4 @@
 .prompt-drop-on { outline: 1px dashed #c07895; outline-offset: 1px; }
 .prompt-drop-only { display: none; }
 .prompt-dragging .prompt-drop-only { display: block; }
-.prompt-entry-group { margin: 9px 0; }
-.prompt-entry-group-title { padding: 6px 4px 8px; color: #896776; font-size: 12px; }
 #stEntryPresetField label { display: block; }

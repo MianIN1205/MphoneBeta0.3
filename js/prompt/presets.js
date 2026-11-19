@@ -209,26 +209,13 @@ function renderStEntryList() {
   renderPlotCard(cur);
   if (!cur || !Array.isArray(cur.entries)) return;
 
-  var groups = {};
-  ['before', 'after'].forEach(function(pos) {
-    var group = document.createElement('section');
-    group.className = 'prompt-entry-group';
-    group.dataset.promptDropGroup = pos;
-    var title = document.createElement('div');
-    title.className = 'prompt-entry-group-title';
-    title.textContent = pos === 'before' ? '聊天记录前' : '聊天记录后';
-    group.appendChild(title);
-    groups[pos] = group;
-    stEntryList.appendChild(group);
-  });
   cur.entries.forEach(function(entry, idx) {
     var card = document.createElement('div');
     card.className = 'st-entry-card' + (entry.enabled ? '' : ' disabled');
     card.dataset.promptDropEntry = '';
     card._promptEntry = entry;
-    promptDragGrip(card, stEntryList, function(pos, target, after) {
-      if (!movePromptEntry(cur.entries, entry, target, after, function(e) { return (e.pos === 'after' ? 'after' : 'before') === pos; })) return;
-      entry.pos = pos;
+    promptDragGrip(card, stEntryList, function(_, target, after) {
+      if (!target || !movePromptEntry(cur.entries, entry, target, after)) return;
       saveStPresetsToStorage();
       renderStEntryList();
     });
@@ -276,7 +263,7 @@ function renderStEntryList() {
     card.appendChild(badge);
     card.appendChild(main);
     card.appendChild(toggleLabel);
-    groups[entry.pos === 'after' ? 'after' : 'before'].appendChild(card);
+    stEntryList.appendChild(card);
   });
 }
 
