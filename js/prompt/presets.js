@@ -203,10 +203,93 @@ function renderStPresetSelector() {
   });
 }
 
+
+function stPresetFolderNames(preset) {
+  var names = Array.isArray(preset.folders) ? preset.folders.slice() : [];
+  (preset.entries || []).forEach(function(entry) { if (entry.folder) names.push(entry.folder); });
+  return Array.from(new Set(names.filter(function(name) { return typeof name === 'string' && name; })));
+}
+
+function setStEntriesEnabled(entries, enabled) {
+  entries.forEach(function(entry) { entry.enabled = enabled; });
+  saveStPresetsToStorage();
+  renderStEntryList();
+}
+
+function renderStFolderControls(preset) {
+  var panel = document.getElementById('stEntryFolders');
+  var list = document.getElementById('stEntryFolderList');
+  panel.hidden = !preset;
+  list.replaceChildren();
+  if (!preset) return;
+  var names = stPresetFolderNames(preset);
+  names.forEach(function(name) {
+    var entries = (preset.entries || []).filter(function(entry) { return entry.folder === name; });
+    var row = document.createElement('div');
+    row.className = 'st-folder-row';
+    row.innerHTML = '<span class="st-folder-caption"><b></b><small></small></span><button type="button" class="wb-folder-act">重命名</button><button type="button" class="wb-folder-act">删除</button><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label>';
+    row.querySelector('b').textContent = name;
+    row.querySelector('small').textContent = entries.length + ' 条';
+    var toggle = row.querySelector('input');
+    toggle.setAttribute('aria-label', '开关文件夹 ' + name);
+    var count = entries.filter(function(entry) { return entry.enabled; }).length;
+    toggle.disabled = !entries.length;
+    toggle.checked = !!count && count === entries.length;
+    toggle.indeterminate = count > 0 && count < entries.length;
+    toggle.addEventListener('change', function() { setStEntriesEnabled(entries, toggle.checked); });
+    var buttons = row.querySelectorAll('button');
+    buttons[0].addEventListener('click', function() {
+      askName('重命名预设文件夹', name, function(next) {
+        if (next === name) return;
+        if (stPresetFolderNames(preset).includes(next)) { showToast('文件夹名已存在', 'error'); return; }
+        preset.folders = stPresetFolderNames(preset).map(function(item) { return item === name ? next : item; });
+        entries.forEach(function(entry) { entry.folder = next; });
+        saveStPresetsToStorage();
+        renderStEntryList();
+      });
+    });
+    buttons[1].addEventListener('click', function() {
+      openConfirm('删除文件夹「' + name + '」？条目会移到未分类。', function() {
+        preset.folders = stPresetFolderNames(preset).filter(function(item) { return item !== name; });
+        entries.forEach(function(entry) { delete entry.folder; });
+        saveStPresetsToStorage();
+        renderStEntryList();
+      });
+    });
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('stEntryFolderAdd').addEventListener('click', function() {
+  var preset = stPresets[stActivePresetIdx];
+  if (!preset) return;
+  askName('新建预设文件夹', '', function(name) {
+    var names = stPresetFolderNames(preset);
+    if (names.includes(name)) { showToast('文件夹名已存在', 'error'); return; }
+    preset.folders = names.concat(name);
+    saveStPresetsToStorage();
+    renderStEntryList();
+  });
+});
+
+function fillStEntryFolders(value) {
+  var folder = document.getElementById('stEntryFolder');
+  var preset = stPresets[Number(stEntryPreset.value)];
+  var names = preset ? stPresetFolderNames(preset) : [];
+  document.getElementById('stEntryFolderField').hidden = !names.length;
+  folder.replaceChildren(new Option('未分类', ''));
+  names.forEach(function(name) { folder.add(new Option(name, name)); });
+  folder.value = names.includes(value) ? value : '';
+}
+stEntryPreset.addEventListener('change', function() {
+  fillStEntryFolders(document.getElementById('stEntryFolder').value);
+});
+
 function renderStEntryList() {
   stEntryList.innerHTML = '';
   var cur = stPresets[stActivePresetIdx];
   renderPlotCard(cur);
+  renderStFolderControls(cur);
   if (!cur || !Array.isArray(cur.entries)) return;
 
   cur.entries.forEach(function(entry, idx) {
@@ -230,6 +313,12 @@ function renderStEntryList() {
     var title = document.createElement('div');
     title.className = 'st-entry-title';
     title.textContent = entry.name || '未命名条目';
+    if (entry.folder) {
+      var folderBadge = document.createElement('span');
+      folderBadge.className = 'st-folder-badge';
+      folderBadge.textContent = entry.folder;
+      title.appendChild(folderBadge);
+    }
     if (entry.pos === 'after') { var pb = document.createElement('span'); pb.className = 'st-pos-badge'; pb.textContent = '记录后'; title.appendChild(pb); }
     var preview = document.createElement('div');
     preview.className = 'st-entry-preview';
@@ -254,6 +343,7 @@ function renderStEntryList() {
       entry.enabled = this.checked;
       card.classList.toggle('disabled', !entry.enabled);
       saveStPresetsToStorage();
+      renderStFolderControls(cur);
     });
 
     card.addEventListener('click', function() {
@@ -300,7 +390,7 @@ stPresetNameOk.addEventListener('click', function() {
     ? JSON.parse(JSON.stringify(cur.entries))
     : [];
   if (stPresets.some(function(p) { return p.name === name; })) { shakeEl(stPresetNameInput); showToast('已经有叫这个名字的预设了', 'error'); return; }
-  stPresets.push({ name: name, entries: copiedEntries });
+  stPresets.push({ name: name, entries: copiedEntries, folders: cur ? stPresetFolderNames(cur) : [] });
   stActivePresetIdx = stPresets.length - 1;
   saveStPresetsToStorage();
   stPresetNameBar.classList.remove('open');
@@ -360,6 +450,7 @@ function openStEntryDetail(idx) {
   stEntryPreset.replaceChildren();
   stPresets.forEach(function(p, i) { stEntryPreset.add(new Option(p.name, i)); });
   stEntryPreset.value = String(stActivePresetIdx);
+  fillStEntryFolders(cur.entries[idx] && cur.entries[idx].folder);
   if (idx >= 0 && cur.entries[idx]) {
     var entry = cur.entries[idx];
     stEntryDetailTitle.textContent = entry.name || '编辑条目';
@@ -402,6 +493,7 @@ stEntryDetailSave.addEventListener('click', function() {
   var content = stEntryContentInput.value.trim();
   var posBtn = stEntryPosRow.querySelector('.pf-radio-btn.selected');
   var pos = posBtn && posBtn.dataset.pos === 'after' ? 'after' : 'before';
+  var folder = document.getElementById('stEntryFolder').value;
 
   if (stEditingEntryIdx >= 0 && cur.entries[stEditingEntryIdx]) {
     cur.entries[stEditingEntryIdx].name = name;
@@ -409,6 +501,7 @@ stEntryDetailSave.addEventListener('click', function() {
     cur.entries[stEditingEntryIdx].content = content;
     var entry = cur.entries[stEditingEntryIdx];
     entry.pos = pos;
+    if (folder) entry.folder = folder; else delete entry.folder;
     var target = stPresets[Number(stEntryPreset.value)];
     if (target && target !== cur) {
       if (!Array.isArray(target.entries)) target.entries = [];
@@ -418,7 +511,9 @@ stEntryDetailSave.addEventListener('click', function() {
       showToast('已移到「' + target.name + '」', 'success');
     }
   } else {
-    cur.entries.push({ name: name, role: role, enabled: true, content: content, pos: pos });
+    var added = { name: name, role: role, enabled: true, content: content, pos: pos };
+    if (folder) added.folder = folder;
+    cur.entries.push(added);
   }
   saveStPresetsToStorage();
   renderStEntryList();
@@ -517,8 +612,8 @@ function stPresetFromJson(json, fallbackName) {
   var toRole = function(r) { return (r === 'user' || r === 'assistant') ? r : 'system'; };
   if (!Array.isArray(json.prompts)) {
     if (Array.isArray(json.entries)) {
-      return { name: json.name || fallbackName, entries: json.entries.map(function(e) {
-        return { name: e.name || '未命名条目', role: toRole(e.role), enabled: e.enabled !== false, content: String(e.content || ''), pos: e.pos === 'after' ? 'after' : 'before' };
+      return { name: json.name || fallbackName, folders: Array.isArray(json.folders) ? json.folders : [], entries: json.entries.map(function(e) {
+        return { name: e.name || '未命名条目', role: toRole(e.role), enabled: e.enabled !== false, content: String(e.content || ''), pos: e.pos === 'after' ? 'after' : 'before', folder: typeof e.folder === 'string' ? e.folder : undefined };
       }) };
     }
     throw new Error('不是酒馆的对话补全预设（找不到 prompts）');

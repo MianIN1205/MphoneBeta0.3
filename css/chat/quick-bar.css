@@ -50,3 +50,18 @@
 #appChatRoom.cr-qb-in-nav .cr-qb { flex: 1 1 auto; min-width: 0; padding: 0 6px; gap: 4px; align-items: center; z-index: 60; }   /* 弹层要压在下面的聊天内容上 */
 #appChatRoom.cr-qb-in-nav .cr-qb-chip { padding: 4px 8px; font-size: 10.5px; border-radius: 11px; justify-content: center; }
 #appChatRoom.cr-qb-in-nav .cr-qb-key { display: none; }
+
+
+.cr-qb-item.cr-qb-pre-title { font-size: 13px; font-weight: 600; }
+.cr-qb-pre-body { margin: 0 5px 6px 13px; }
+.cr-qb-pre-folder {
+  margin-bottom: 4px; border: 1px solid #eedce5; border-radius: 9px;
+  background: rgba(251,238,245,.63);
+}
+.cr-qb-item.cr-qb-pre-folder-head { padding: 6px 8px; color: #694d5f; font-weight: 600; }
+.cr-qb-pre-folder-head .cr-qb-item-sub { color: #8a7180; }
+.cr-qb-pre-folder-head input { width: 14px; height: 14px; margin: 0; accent-color: #bc698b; cursor: pointer; }
+.cr-qb-pre-folder-head .cr-qb-expand { margin-left: 1px; color: #846674; background: #f4e3ec; }
+.cr-qb-pre-children { margin: 0 7px 5px 14px; padding-left: 4px; border-left: 1px solid #e9c9da; }
+.cr-qb-item.cr-qb-pre-entry { padding: 5px 8px; font-size: 11.5px; }
+.cr-qb-empty.cr-qb-pre-hint { padding: 3px 14px 8px; text-align: left; color: #8b7380; font-size: 11px; line-height: 1.45; }

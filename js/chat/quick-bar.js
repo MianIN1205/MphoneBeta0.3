@@ -87,9 +87,10 @@ function closeQuickPop() {
   crQuickBar.querySelectorAll('.cr-qb-chip').forEach(function(c) { c.classList.remove('open'); });
 }
 
-var crQbPreOpen = {};   // 拓展栏预设里展开看条目的（只在这次打开期间）
+var crQbPreFolders = new Set();
+var crQbPreOpen = Object.create(null);   // 拓展栏预设里展开看条目的（只在这次打开期间）
 var crQbWbOpen = {};   // 拓展栏世界书里展开看条目的那几本（只在这次打开期间）
-function quickItem(name, sub, selected, onClick) {
+function quickItem(name, sub, selected, onClick, parent) {
   var it = document.createElement('div');
   it.className = 'cr-qb-item' + (selected ? ' selected' : '');
   var n = document.createElement('span');
@@ -101,7 +102,7 @@ function quickItem(name, sub, selected, onClick) {
   it.appendChild(n);
   it.appendChild(s);
   it.addEventListener('click', function(e) { e.stopPropagation(); onClick(); });
-  crQuickPop.appendChild(it);
+  (parent || crQuickPop).appendChild(it);
   return it;
 }
 
@@ -235,27 +236,87 @@ function renderQuickPop() {
     var mine = charOwnPromptPreset(char);
     quickItem('跟随全局', cur ? cur.name : '', !mine, function() { setQuickField('promptPresetName', ''); });
     // 每个预设右边「条目」：展开一条条开关（用户要的：选完预设还能改具体开哪些）；改的是这个预设本身，用它的角色都会跟着变
+
+    var showPresetHint = false;
     stPresets.forEach(function(p) {
       var es = p.entries || [], nOn = es.filter(function(e) { return e.enabled; }).length;
       var it = quickItem(p.name, nOn + ' / ' + es.length + ' 条开着', mine === p, function() { setQuickField('promptPresetName', p.name); });
+      it.classList.add('cr-qb-pre-title');
       if (!es.length) return;
       var ex = document.createElement('button');
       ex.className = 'cr-qb-expand';
       ex.textContent = crQbPreOpen[p.name] ? '收起' : '条目';
-      ex.addEventListener('click', function(e) { e.stopPropagation(); crQbPreOpen[p.name] = !crQbPreOpen[p.name]; renderQuickPop(); });
+      ex.setAttribute('aria-expanded', String(!!crQbPreOpen[p.name]));
+      ex.addEventListener('click', function(e) {
+        e.stopPropagation();
+        crQbPreOpen[p.name] = !crQbPreOpen[p.name];
+        renderQuickPop();
+      });
       it.appendChild(ex);
       if (!crQbPreOpen[p.name]) return;
-      es.forEach(function(en) {
-        var sub = quickItem(en.name || '未命名条目', en.pos === 'after' ? '放在后' : '', !!en.enabled, function() {
-          en.enabled = !en.enabled;
-          saveStPresetsToStorage();
-          if (typeof renderStEntryList === 'function') renderStEntryList();   // Prompt 页开着的话跟着变
+
+      showPresetHint = true;
+      var body = document.createElement('div');
+      body.className = 'cr-qb-pre-body';
+      crQuickPop.appendChild(body);
+      function itemFor(entry, parent) {
+        var item = quickItem(entry.name || '未命名条目', entry.pos === 'after' ? '放在后' : '', !!entry.enabled, function() {
+          setStEntriesEnabled([entry], !entry.enabled);
+          renderQuickPop();
+        }, parent);
+        item.classList.add('cr-qb-pre-entry');
+      }
+      var names = stPresetFolderNames(p);
+      names.forEach(function(name) {
+        var entries = es.filter(function(entry) { return entry.folder === name; });
+        if (!entries.length) return;
+        var enabled = entries.filter(function(entry) { return entry.enabled; }).length;
+        var all = enabled === entries.length;
+        var card = document.createElement('div');
+        card.className = 'cr-qb-pre-folder';
+        body.appendChild(card);
+        function batch(enabled) {
+          setStEntriesEnabled(entries, enabled);
+          renderQuickPop();
+        }
+        var folder = quickItem(name, enabled + ' / ' + entries.length, false, function() { batch(!all); }, card);
+        folder.classList.add('cr-qb-pre-folder-head');
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = all;
+        input.indeterminate = enabled > 0 && !all;
+        input.setAttribute('aria-label', '整组开关：' + name);
+        input.addEventListener('click', function(e) { e.stopPropagation(); });
+        input.addEventListener('change', function() { batch(input.checked); });
+        folder.appendChild(input);
+        var key = JSON.stringify([p.name, name]);
+        var opened = crQbPreFolders.has(key);
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'cr-qb-expand';
+        toggle.textContent = opened ? '收起' : '条目';
+        toggle.setAttribute('aria-expanded', String(opened));
+        toggle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (opened) crQbPreFolders.delete(key); else crQbPreFolders.add(key);
           renderQuickPop();
         });
-        sub.classList.add('cr-qb-sub');
+        folder.appendChild(toggle);
+        if (opened) {
+          var children = document.createElement('div');
+          children.className = 'cr-qb-pre-children';
+          card.appendChild(children);
+          entries.forEach(function(entry) { itemFor(entry, children); });
+        }
       });
-      crQuickPop.insertAdjacentHTML('beforeend', '<div class="cr-qb-empty" style="padding:2px 14px 8px;text-align:left;">改的是「' + escHtmlAsset(p.name) + '」本身，用它的角色都会跟着变</div>');
+      es.filter(function(entry) { return !names.includes(entry.folder); }).forEach(function(entry) { itemFor(entry, body); });
     });
+    if (showPresetHint) {
+      var hint = document.createElement('div');
+      hint.className = 'cr-qb-empty cr-qb-pre-hint';
+      hint.textContent = '这些开关会同步到所有使用该预设的角色。';
+      crQuickPop.appendChild(hint);
+    }
   } else if (crQuickOpen === 'wb') {
     // 世界书可多选：点一本 = 整本关联 / 取消；点「条目」展开，一条条单独勾（用户要的），弹层不收起
     // 只换当前窗口（聊天 / 剧情）那栏的
