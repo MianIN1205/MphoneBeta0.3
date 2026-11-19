@@ -36,12 +36,29 @@ else mphoneFullViewport.addListener(syncDefaultMphoneLayout);
 var replyButtonEmoji = '❄️';
 (function() {
   var options = [
-    ['❄️', '雪花（默认）'], ['✨', '闪光'], ['💕', '双心'], ['🎐', '风铃'], ['🧸', '小熊'], ['🫧', '泡泡'],
-    ['👻', '小幽灵'], ['🤖', '机器人'], ['💎', '宝石'], ['🍰', '蛋糕'], ['🍪', '饼干'], ['🌼', '小花']
+    ['❄️', '雪花（默认）'], ['✨', '闪光'], ['💎', '宝石'], ['🫧', '泡泡'], ['🎐', '风铃'], ['🎏', '鲤鱼旗'],
+    ['💕', '双心'], ['❤️', '红心'], ['💙', '蓝心'], ['🌼', '小花'], ['🧸️', '小熊'], ['🤖', '机器人'],
+    ['🍥', '鱼板'], ['🍰', '蛋糕'], ['🍩', '甜甜圈'], ['🍎', '苹果'], ['🫐', '蓝莓'], ['💊', '胶囊']
   ];
   var saved = mphoneStore.load('mphone_reply_emoji', replyButtonEmoji);
-  if (options.some(function(option) { return option[0] === saved; })) replyButtonEmoji = saved;
+  var current = options.find(function(option) { return option[0] === (saved === '🧸' ? '🧸️' : saved); }) || options[0];
+  var preview = document.getElementById('replyEmojiCurrent');
+  var change = document.getElementById('replyEmojiChange');
   var group = document.getElementById('replyEmojiOptions');
+  function paintCurrent(option) {
+    replyButtonEmoji = option[0];
+    preview.textContent = option[0];
+    preview.setAttribute('aria-label', option[1]);
+    preview.title = option[1];
+  }
+  function setOpen(open) {
+    group.hidden = !open;
+    change.setAttribute('aria-expanded', String(open));
+    change.textContent = open ? '收起' : '更换';
+  }
+  paintCurrent(current);
+  change.addEventListener('click', function() { setOpen(group.hidden); });
+  document.getElementById('backAppearance').addEventListener('click', function() { setOpen(false); });
   options.forEach(function(option) {
     var button = document.createElement('button');
     button.type = 'button';
@@ -53,9 +70,11 @@ var replyButtonEmoji = '❄️';
     button.addEventListener('click', function() {
       group.querySelector('[aria-pressed="true"]').setAttribute('aria-pressed', 'false');
       button.setAttribute('aria-pressed', 'true');
-      replyButtonEmoji = option[0];
+      paintCurrent(option);
       mphoneStore.save('mphone_reply_emoji', replyButtonEmoji);
       syncGenBtn();
+      setOpen(false);
+      change.focus();
     });
     group.appendChild(button);
   });
@@ -68,10 +87,12 @@ var statusBar       = document.getElementById('statusBar');
 var toggleStatusBar = document.getElementById('toggleStatusBar');
 var sbCustomText    = document.getElementById('sbCustomText');
 var sbSaveBtn       = document.getElementById('sbSaveBtn');
+var sbSaveHint      = document.getElementById('sbSaveHint');
 var statusCustom    = document.getElementById('statusCustomText');
 
-// 保存的自定义文字（💫 保存后才持久）
+// 自定义文字先预览，点对号才持久化
 var savedCustomText = '';
+var sbSaveInstruction = sbSaveHint.textContent;
 
 // Toggle：控制状态栏显示 / 隐藏
 toggleStatusBar.addEventListener('change', function() {
@@ -82,12 +103,14 @@ toggleStatusBar.addEventListener('change', function() {
 // 输入框实时预览（未保存，仅实时显示）
 sbCustomText.addEventListener('input', function() {
   statusCustom.textContent = this.value;
+  sbSaveHint.textContent = this.value === savedCustomText ? sbSaveInstruction : '尚未保存，点 ✓ 保留。';
 });
 
-// 💫 保存按钮：将当前输入持久化
+// 保存按钮：将当前输入持久化
 sbSaveBtn.addEventListener('click', function() {
   savedCustomText = sbCustomText.value;
   statusCustom.textContent = savedCustomText;
+  sbSaveHint.textContent = '正在保存…';
   // 按钮小动画反馈
   sbSaveBtn.style.transform = 'scale(0.88)';
   setTimeout(function() { sbSaveBtn.style.transform = ''; }, 160);
@@ -98,6 +121,7 @@ backAppearance.addEventListener('click', function() {
   appAppearance.classList.remove('active');
   sbCustomText.value = savedCustomText;
   statusCustom.textContent = savedCustomText;
+  sbSaveHint.textContent = sbSaveInstruction;
 });
 
 // =============================================
@@ -227,7 +251,6 @@ var fontSizeBaseMap = [
   ['.sb-row-label', 15],
   ['.sb-custom-label', 11],
   ['.sb-input', 14],
-  ['.sb-emoji-btn', 18],
   ['.chat-tab-label', 10],
   ['.chat-room-main-title', 16],
   ['.chat-room-sub-title', 11],

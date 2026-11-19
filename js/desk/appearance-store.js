@@ -78,7 +78,13 @@
   sbCustomText.value = savedCustomText;
   statusCustom.textContent = savedCustomText;
   sbSaveBtn.addEventListener('click', function() {
-    mphoneStore.save('mphone_statusbar_text', savedCustomText);
+    var text = savedCustomText;
+    var key = 'mphone_statusbar_text';
+    var accepted = mphoneStore.save(key, text);
+    mphoneStore.flush().then(function() {
+      if (sbSaveHint.textContent !== '正在保存…' || savedCustomText !== text) return;
+      sbSaveHint.textContent = accepted && !mphoneStore.hasPending(key) ? '已保存' : '保存失败，请重试。';
+    });
   });
 
   // 字体：点 ✓ 应用时保存（空 = 恢复默认）
