@@ -23,8 +23,18 @@ function snapshotBubble(bubble) {
   return { kind: 'text', text: text, images: [], author: author };
 }
 
-// 打开长按菜单：bubble 是哪条消息，anchor 是菜单贴着谁摆（长按时是气泡，剧情文本框里点「⋯」时是那个按钮）
-function openMsgCtx(bubble, listId, anchor) {
+// 打开长按菜单：长按用触点，剧情文本框的「⋯」用按钮作为定位参照。
+function openMsgCtx(bubble, listId, anchor, point) {
+  var phone = msgCtxMenu.parentElement;
+  var frame = phone.getBoundingClientRect();
+  var viewport = window.visualViewport;
+  var vx = viewport ? viewport.offsetLeft : 0, vy = viewport ? viewport.offsetTop : 0;
+  var left = Math.max(frame.left, vx) + 8;
+  var top = Math.max(frame.top, vy) + 8;
+  var right = Math.min(frame.right, vx + (viewport ? viewport.width : window.innerWidth)) - 8;
+  var bottom = Math.min(frame.bottom, vy + (viewport ? viewport.height : window.innerHeight)) - 8;
+  if (!bubble.isConnected || left >= right || top >= bottom) return false;
+
   ctxTarget = snapshotBubble(bubble);
   ctxTarget.source = '与 ' + chatRoomTitle.textContent + (listId === 'dramaMsgList' ? ' 的剧情' : ' 的聊天');
   var row = bubble.closest('.chat-msg-row');
@@ -48,12 +58,20 @@ function openMsgCtx(bubble, listId, anchor) {
   };
   msgCtxMenu.querySelectorAll('button').forEach(function(btn) { btn.classList.toggle('hide', !show[btn.dataset.act]); });
   var r = (anchor || bubble).getBoundingClientRect();
+  var scaleX = frame.width / phone.offsetWidth, scaleY = frame.height / phone.offsetHeight;
+  msgCtxMenu.style.maxWidth = Math.min(292, (right - left) / scaleX) + 'px';
+  msgCtxMenu.style.maxHeight = (bottom - top) / scaleY + 'px';
   msgCtxMenu.classList.add('open');
-  var mw = msgCtxMenu.offsetWidth, mh = msgCtxMenu.offsetHeight;
-  var left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.left + r.width / 2 - mw / 2));
-  var top = r.top - mh - 6 < 8 ? r.bottom + 6 : r.top - mh - 6;
-  msgCtxMenu.style.left = left + 'px';
-  msgCtxMenu.style.top = top + 'px';
+  var size = msgCtxMenu.getBoundingClientRect();
+  var center = point ? point.x : r.left + r.width / 2;
+  var above = (point ? point.y : r.top) - 6;
+  var below = (point ? point.y : r.bottom) + 6;
+  var y = above - size.height >= top || above - top >= bottom - below ? above - size.height : below;
+  var x = Math.max(left, Math.min(right - size.width, center - size.width / 2));
+  y = Math.max(top, Math.min(bottom - size.height, y));
+  msgCtxMenu.style.left = ((x - frame.left) / scaleX - phone.clientLeft) + 'px';
+  msgCtxMenu.style.top = ((y - frame.top) / scaleY - phone.clientTop) + 'px';
+  return true;
 }
 
 var pressBubble = null, pressTimer = null;
@@ -74,7 +92,7 @@ function unpress() { clearTimeout(pressTimer); if (pressBubble) pressBubble.clas
     timer = setTimeout(function() {
       timer = null;
       unpress();
-      openMsgCtx(bubble, listId, bubble);
+      if (!openMsgCtx(bubble, listId, bubble, { x: sx, y: sy })) return;
       suppressClick = true;
       if (navigator.vibrate) navigator.vibrate(15);
     }, 500);
@@ -200,6 +218,11 @@ document.getElementById('msgEditSave').addEventListener('click', function() {
 document.addEventListener('pointerdown', function(e) {
   if (msgCtxMenu.classList.contains('open') && !msgCtxMenu.contains(e.target)) closeMsgCtx();
 });
+window.addEventListener('resize', closeMsgCtx);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', closeMsgCtx);
+  window.visualViewport.addEventListener('scroll', closeMsgCtx);
+}
 
 // 剧情窗口文本框顶上的按钮（render.js 的 addDramaHead）：编辑、收藏直接做，「⋯」打开和长按一样的菜单
 document.getElementById('dramaMsgList').addEventListener('click', function(e) {

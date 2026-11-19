@@ -113,24 +113,37 @@ var WB_TEACHING = {
         "在写动态时，{{char}} 可以挑一件符合近况的小事，比如校园、工作、路上见闻或一个小习惯。用一个具体细节写成像随手发的动态。",
         "有新的观察或变化再写相近的题材。提到 {{user}} 时，沿用已有互动，也尊重这条动态的可见范围。"
       ].join('\n')
+    },
+    {
+      name: "去八股",
+      introduced: 3,
+      enabled: false,
+      content: [
+        "【共通 · 仅用于剧情窗口】接住上一轮明确发生的事，让 {{char}} 按自己的性格、关系和处境做出反应。优先写一个有用的细节：一句只有这个人会说的话、一个会影响下一步的动作，或一件 {{user}} 刚提到的物件。对白、动作和心声按场景需要取用，同一个意思写一次就够。沿用本轮的视角、文风和明确的字数要求，写到 {{user}} 可以接话或行动的地方就停。",
+        "【Claude】容易把每段写得太圆时，让角色自然地停一句、改口或只做一个动作。少给已经看得出来的感情配解释，少用工整的转折、连着的比喻和意味深长的结尾。角色的克制、脾气和笨拙都可以留在人物的说法里。",
+        "【Gemini】起笔前留意最近几轮用过的开头、神态和收尾。情绪刚写过，就接下一个动作、对白或场景变化。人物碰到小事可以只给小反应，口癖和招牌动作在合适的时候才出现。场景有好几个人时，让他们各有说话习惯，也各自按自己知道的事行动。"
+      ].join('\n\n')
     }
   ]
 };
 
 (function() {
   var seeded = Number(mphoneStore.load('mphone_wb_seed', 0)) || 0;
-  if (seeded >= 2) return;
+  if (seeded >= 3) return;
   var packs = seeded < 1 ? WB_BUILTIN.concat(WB_TEACHING) : [WB_TEACHING];
   packs.forEach(function(fo) {
     // 教材使用独立 ID，已有同名文件夹的角色关联会保留。
     var f = wbFolders.find(function(x) { return fo.id ? x.id === fo.id : x.name === fo.name; });
     if (!f) { f = { id: fo.id || genWbId('wf'), name: fo.name }; wbFolders.push(f); }
     fo.entries.forEach(function(e) {
+      if (seeded >= 2 && e.introduced !== 3) return;
       if (wbEntries.some(function(x) { return x.name === e.name && x.folderId === f.id; })) return;   // 已经自己导入过同名的就不重复放
-      wbEntries.push({ id: genWbId('wb'), name: e.name, keywords: '', content: e.content, pos: 'after', folderId: f.id, rule: true });
+      var entry = { id: genWbId('wb'), name: e.name, keywords: '', content: e.content, pos: 'after', folderId: f.id, rule: true };
+      if (e.enabled === false) entry.enabled = false;
+      wbEntries.push(entry);
     });
   });
   saveWbEntries();
-  mphoneStore.save('mphone_wb_seed', 2);
+  mphoneStore.save('mphone_wb_seed', 3);
   if (typeof renderWbList === 'function') renderWbList();
 })();
