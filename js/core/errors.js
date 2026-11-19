@@ -91,9 +91,11 @@ function explainError(err) {
 
 // =============================================
 // 聊天里的一行小字：「⚠️ 回复失败：连不上服务器  查看原因」，点开是分析弹窗
-// 不会发给 AI。报错条一直留在原处（切出去再回来、重开小手机都还在）：
+// 原始报错不会发给 AI。报错条一直留在原处（切出去再回来、重开小手机都还在）：
 // 挂在出错时最后一条消息上（m.errs，跟着记录存）；记录还空着时挂在这份记录上（只在这次打开期间）
 // =============================================
+var ERR_CONTEXT_MS = 24 * 3600000;
+var errEmptyTrail = new WeakMap();
 var ERR_KEEP = 5;                  // 一条消息后面最多留几条报错
 var errEmptyNotes = new WeakMap(); // 空记录 → 报错
 // 报错存成普通对象（能存进记录）；只留分析和完整报错要用的，密钥打码
@@ -116,9 +118,11 @@ function errRemember(hist, err, ctx) {
   if (!hist) return p;
   var m = hist[hist.length - 1];
   if (m) {
+    m.errTrail = addErrTrail(m.errTrail, m.errs, p);
     m.errs = (m.errs || []).concat(p).slice(-ERR_KEEP);
     if (typeof saveHistories === 'function') saveHistories();
   } else {
+    errEmptyTrail.set(hist, addErrTrail(errEmptyTrail.get(hist), errEmptyNotes.get(hist), p));
     errEmptyNotes.set(hist, (errEmptyNotes.get(hist) || []).concat(p).slice(-ERR_KEEP));
   }
   return p;
@@ -144,6 +148,69 @@ function errShortLabel(err, ex) {
     (hasStatus && ERR_SHORT_BY_HTTP[status]) || ERR_SHORT_BY_KIND[ex.id];
   return hasStatus ? status + ' · ' + (label || (status >= 500 ? '服务异常' : '请求失败')) : label || '未知错误';
 }
+
+var REPLY_ERR_LINK = /报错|网络错误|连接(?:不上|不到|失败|中断|超时)|连(?:不上|不到|不通)|断线|断网|加载失败|请求失败|一直转圈|卡在加载|回不了|发不出去|failed to fetch|network error|timed? out/i;
+var REPLY_GENERIC_ERROR = /^i seem to be encountering an error\.?\s*(?:can i try something else for you\??)?$/i;
+
+
+var ERR_CONTEXT_LABELS = new Set(Object.values(ERR_SHORT_BY_KIND).concat(Object.values(ERR_SHORT_BY_HTTP),
+  ['服务异常', '请求失败', '未知错误']));
+function safeErrTrailLabel(label) {
+  return typeof label === 'string' && ERR_CONTEXT_LABELS.has(label.replace(/^[45]\d\d · /, ''));
+}
+
+function errTrailItem(err) {
+  return { time: err.time, label: errShortLabel(err, explainError(err)) };
+}
+
+function addErrTrail(trail, saved, err) {
+  var cutoff = err.time - ERR_CONTEXT_MS;
+  var previous = Array.isArray(trail) ? trail : (saved || []).filter(function(item) { return item.time >= cutoff; }).map(errTrailItem);
+  return previous.filter(function(item) { return item.time >= cutoff; }).concat(errTrailItem(err));
+}
+
+function replyErrorContext(hist) {
+  var now = Date.now(), cutoff = now - ERR_CONTEXT_MS;
+  var texts = [];
+  for (var i = hist.length - 1; i >= 0 && texts.length < 6; i--) {
+    var msg = hist[i];
+    if (msg.role !== 'user') break;
+    if (msg.time && now - msg.time > 30 * 60000) break;
+    if (!msg.recalled && !msg.note && !msg.action && !msg.cal && typeof msg.content === 'string') texts.push(msg.content);
+  }
+  var text = texts.join('\n');
+  if (!REPLY_ERR_LINK.test(text)) return null;
+
+  var events = [];
+  function collect(trail, raw) {
+    if (Array.isArray(trail)) {
+      trail.forEach(function(item) {
+        if (item && item.time >= cutoff && item.time <= now && safeErrTrailLabel(item.label)) events.push(item);
+      });
+    } else if (Array.isArray(raw)) {
+      raw.forEach(function(item) {
+        if (item.time >= cutoff && item.time <= now) events.push(errTrailItem(item));
+      });
+    }
+  }
+  collect(errEmptyTrail.get(hist), errEmptyNotes.get(hist));
+  hist.forEach(function(msg) {
+    collect(msg.errTrail, msg.errs);
+    if (msg.time >= cutoff && msg.time <= now && msg.role === 'assistant' && !msg.recalled &&
+        typeof msg.content === 'string' && REPLY_GENERIC_ERROR.test(msg.content.trim())) {
+      events.push({ time: msg.time, label: '回复出现通用出错提示' });
+    }
+  });
+  if (!events.length) return null;
+  events.sort(function(a, b) { return a.time - b.time; });
+  var timeline = events.map(function(event) { return fmtMsgTime(event.time) + ' · ' + event.label; }).join('\n');
+  return {
+    role: 'system',
+    content: '【本轮的连接情况】最近 24 小时，这段对话共记录到 ' + events.length + ' 次出错：\n' + timeline + '\n' +
+      '先回应用户这轮说的事和等待时的感受。适合提及时，可以自然接一句；只有用户在问时间或原因时，再简短说明相应记录，以这些信息为限。'
+  };
+}
+
 function errNoticeEl(p) {
   var e = { message: p.message, status: p.status, statusText: p.statusText, name: p.name, url: p.url, body: p.body, stack: p.stack };
   var ex = explainError(e);

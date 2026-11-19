@@ -88,7 +88,6 @@ function promptDragGrip(card, root, onDrop) {
   grip.type = 'button';
   grip.className = 'prompt-drag-grip';
   grip.setAttribute('aria-label', '拖动排序，点按编辑');
-  grip.textContent = '⠿';
   var drag = null, suppress = false;
 
   function targetAt() {

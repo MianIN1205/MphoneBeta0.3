@@ -499,7 +499,10 @@ function sendMsg(userText, requestOnly, onDone) {
     if (typeof cotModeFor === 'function') cfg.cot = cotModeFor(replyChar, !isChatView);   // 这个角色这个窗口的思考方式（llm.js 的 llmThinkOff 看它）
     // 群聊开了「成员各用自己的模型」：一个个人单独问一遍，拼成一段再按「名字：」拆（js/chat/group.js）
     if (isGrp && typeof groupSoloOn === 'function' && groupSoloOn(replyChar)) return groupSoloText(replyChar, hist, ctrl.signal);
-    return llmRequest(buildMsgs(replyCharIdx).concat(isChatView ? chatFormatRules(charList[replyCharIdx]) : dramaFormatRules(charList[replyCharIdx]), cotRules(!isChatView, replyChar)), {
+    var msgs = buildMsgs(replyCharIdx);
+    var errorContext = isChatView && !isGrp && typeof replyErrorContext === 'function' ? replyErrorContext(hist) : null;
+    if (errorContext) msgs.push(errorContext);
+    return llmRequest(msgs.concat(isChatView ? chatFormatRules(charList[replyCharIdx]) : dramaFormatRules(charList[replyCharIdx]), cotRules(!isChatView, replyChar)), {
     stream: true,
     signal: ctrl.signal,
     cfg: cfg,

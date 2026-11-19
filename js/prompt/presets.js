@@ -216,57 +216,82 @@ function setStEntriesEnabled(entries, enabled) {
   renderStEntryList();
 }
 
-function renderStFolderControls(preset) {
-  var panel = document.getElementById('stEntryFolders');
-  var list = document.getElementById('stEntryFolderList');
-  panel.hidden = !preset;
-  list.replaceChildren();
-  if (!preset) return;
-  var names = stPresetFolderNames(preset);
-  names.forEach(function(name) {
-    var entries = (preset.entries || []).filter(function(entry) { return entry.folder === name; });
+var stEntriesFlat = false;
+var stClosedFolders = new WeakMap();
+document.getElementById('stEntryView').addEventListener('click', function() {
+  stEntriesFlat = !stEntriesFlat;
+  renderStEntryList();
+});
+
+function renderStFolderSections(preset, groups) {
+  var targets = new Map();
+  var closed = stClosedFolders.get(preset);
+  if (!closed) stClosedFolders.set(preset, closed = new Set());
+  groups.forEach(function(entries, name) {
+    var group = document.createElement('section');
+    group.className = 'st-folder-group';
+    group.dataset.promptDropGroup = name;
     var row = document.createElement('div');
     row.className = 'st-folder-row';
-    row.innerHTML = '<span class="st-folder-caption"><b></b><small></small></span><button type="button" class="wb-folder-act">重命名</button><button type="button" class="wb-folder-act">删除</button><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label>';
+    row.innerHTML = '<button type="button" class="st-folder-caption"><b></b><small></small></button><button type="button" class="wb-folder-act">重命名</button><button type="button" class="wb-folder-act">删除</button><label class="st-toggle-wrap"><input type="checkbox"><span class="st-toggle-slider"></span></label>';
+    var opener = row.firstElementChild;
+    var body = document.createElement('div');
+    body.className = 'st-folder-entries';
+    body.hidden = closed.has(name);
+    opener.setAttribute('aria-expanded', String(!body.hidden));
+    opener.addEventListener('click', function() {
+      if (body.hidden) closed.delete(name); else closed.add(name);
+      body.hidden = !body.hidden;
+      opener.setAttribute('aria-expanded', String(!body.hidden));
+    });
+    if (!entries.length) {
+      body.innerHTML = '<div class="st-folder-empty">空分组</div>';
+    }
     row.querySelector('b').textContent = name;
-    row.querySelector('small').textContent = entries.length + ' 条';
+    row.querySelector('small').textContent = entries.filter(function(entry) { return entry.enabled; }).length + ' / ' + entries.length;
     var toggle = row.querySelector('input');
-    toggle.setAttribute('aria-label', '开关文件夹 ' + name);
+    toggle.setAttribute('aria-label', '开关分组 ' + name);
     var count = entries.filter(function(entry) { return entry.enabled; }).length;
     toggle.disabled = !entries.length;
     toggle.checked = !!count && count === entries.length;
     toggle.indeterminate = count > 0 && count < entries.length;
     toggle.addEventListener('change', function() { setStEntriesEnabled(entries, toggle.checked); });
-    var buttons = row.querySelectorAll('button');
+    var buttons = row.querySelectorAll('.wb-folder-act');
     buttons[0].addEventListener('click', function() {
-      askName('重命名预设文件夹', name, function(next) {
+      askName('重命名预设分组', name, function(next) {
         if (next === name) return;
-        if (stPresetFolderNames(preset).includes(next)) { showToast('文件夹名已存在', 'error'); return; }
+        if (stPresetFolderNames(preset).includes(next)) { showToast('分组名已存在', 'error'); return; }
         preset.folders = stPresetFolderNames(preset).map(function(item) { return item === name ? next : item; });
         entries.forEach(function(entry) { entry.folder = next; });
+        if (closed.delete(name)) closed.add(next);
         saveStPresetsToStorage();
         renderStEntryList();
       });
     });
     buttons[1].addEventListener('click', function() {
-      openConfirm('删除文件夹「' + name + '」？条目会移到未分类。', function() {
+      openConfirm('删除分组「' + name + '」？条目会移到未分类。', function() {
         preset.folders = stPresetFolderNames(preset).filter(function(item) { return item !== name; });
         entries.forEach(function(entry) { delete entry.folder; });
+        closed.delete(name);
         saveStPresetsToStorage();
         renderStEntryList();
       });
     });
-    list.appendChild(row);
+    group.append(row, body);
+    stEntryList.appendChild(group);
+    targets.set(name, body);
   });
+  return targets;
 }
 
 document.getElementById('stEntryFolderAdd').addEventListener('click', function() {
   var preset = stPresets[stActivePresetIdx];
   if (!preset) return;
-  askName('新建预设文件夹', '', function(name) {
+  askName('新建预设分组', '', function(name) {
     var names = stPresetFolderNames(preset);
-    if (names.includes(name)) { showToast('文件夹名已存在', 'error'); return; }
+    if (names.includes(name)) { showToast('分组名已存在', 'error'); return; }
     preset.folders = names.concat(name);
+    stEntriesFlat = false;
     saveStPresetsToStorage();
     renderStEntryList();
   });
@@ -289,16 +314,45 @@ function renderStEntryList() {
   stEntryList.innerHTML = '';
   var cur = stPresets[stActivePresetIdx];
   renderPlotCard(cur);
-  renderStFolderControls(cur);
   if (!cur || !Array.isArray(cur.entries)) return;
+  var names = stPresetFolderNames(cur);
+  var grouped = names.length > 0 && !stEntriesFlat;
+  var view = document.getElementById('stEntryView');
+  view.hidden = !names.length;
+  view.textContent = grouped ? '单列排序' : '按分组看';
+  var groupedEntries = new Map();
+  names.forEach(function(name) { groupedEntries.set(name, []); });
+  cur.entries.forEach(function(entry) {
+    if (groupedEntries.has(entry.folder)) groupedEntries.get(entry.folder).push(entry);
+  });
+  var targets = grouped ? renderStFolderSections(cur, groupedEntries) : new Map();
+  var loose = stEntryList;
+  if (grouped) {
+    loose = document.createElement('div');
+    loose.className = 'st-folder-loose';
+    loose.dataset.promptDropGroup = '';
+    var label = document.createElement('div');
+    label.className = 'st-folder-loose-title';
+    label.textContent = '未分类';
+    loose.appendChild(label);
+    if (cur.entries.every(function(entry) { return groupedEntries.has(entry.folder); })) loose.classList.add('prompt-drop-only');
+    stEntryList.appendChild(loose);
+  }
 
   cur.entries.forEach(function(entry, idx) {
     var card = document.createElement('div');
     card.className = 'st-entry-card' + (entry.enabled ? '' : ' disabled');
     card.dataset.promptDropEntry = '';
     card._promptEntry = entry;
-    promptDragGrip(card, stEntryList, function(_, target, after) {
-      if (!target || !movePromptEntry(cur.entries, entry, target, after)) return;
+    promptDragGrip(card, stEntryList, function(folder, target, after) {
+      if (!grouped && !target) return;
+      if (!movePromptEntry(cur.entries, entry, target, after, function(item) { return (item.folder || '') === folder; })) return;
+      if (grouped) {
+        if (folder) entry.folder = folder;
+        else delete entry.folder;
+        var closed = stClosedFolders.get(cur);
+        if (closed) closed.delete(folder);
+      }
       saveStPresetsToStorage();
       renderStEntryList();
     });
@@ -313,7 +367,7 @@ function renderStEntryList() {
     var title = document.createElement('div');
     title.className = 'st-entry-title';
     title.textContent = entry.name || '未命名条目';
-    if (entry.folder) {
+    if (!grouped && entry.folder) {
       var folderBadge = document.createElement('span');
       folderBadge.className = 'st-folder-badge';
       folderBadge.textContent = entry.folder;
@@ -343,7 +397,7 @@ function renderStEntryList() {
       entry.enabled = this.checked;
       card.classList.toggle('disabled', !entry.enabled);
       saveStPresetsToStorage();
-      renderStFolderControls(cur);
+      if (grouped && entry.folder) renderStEntryList();
     });
 
     card.addEventListener('click', function() {
@@ -353,7 +407,7 @@ function renderStEntryList() {
     card.appendChild(badge);
     card.appendChild(main);
     card.appendChild(toggleLabel);
-    stEntryList.appendChild(card);
+    (targets.get(entry.folder) || loose).appendChild(card);
   });
 }
 

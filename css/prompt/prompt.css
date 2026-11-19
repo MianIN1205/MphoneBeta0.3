@@ -472,13 +472,10 @@
 .prompt-drag-grip {
   flex: 0 0 25px; min-height: 34px; padding: 0;
   border: 0; border-radius: 7px; background: transparent;
-  color: #91677b; font-family: inherit; font-size: 19px; touch-action: none; cursor: grab;
-}
-.wb-folder .prompt-drag-grip {
   display: grid; place-items: center;
-  color: #ae929f; font-size: 0;
+  color: #ae929f; touch-action: none; cursor: grab;
 }
-.wb-folder .prompt-drag-grip::before {
+.prompt-drag-grip::before {
   content: ''; width: 13px; height: 1.5px; border-radius: 2px;
   background: currentColor;
   box-shadow: 0 -4px currentColor, 0 4px currentColor;
@@ -492,26 +489,26 @@
 .prompt-dragging .prompt-drop-only { display: block; }
 #stEntryPresetField label { display: block; }
 
-#stEntryFolders { margin: 2px 0 7px; }
-#stEntryFolders[open] { padding-bottom: 6px; }
-.st-folder-row {
-  display: flex; align-items: center; gap: 6px; min-height: 38px;
-  border-top: 1px solid rgba(80,62,72,.08);
-}
+
+.st-entry-tools { display: flex; justify-content: space-between; margin: 3px 0 8px; }
+.st-entry-tools button { min-height: 29px; }
+.st-folder-group { border: 1px solid #efdde6; border-radius: 11px; background: #fcf4f8; margin-bottom: 9px; }
+.st-folder-row { display: flex; align-items: center; gap: 5px; min-height: 42px; padding: 0 8px; }
 .st-folder-caption {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 12px; color: #6f5563;
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; min-height: 34px;
+  border: 0; background: transparent; color: #684c5b; text-align: left; font: inherit; font-size: 13px; padding: 0;
 }
-.st-folder-badge {
-  margin-left: 6px; color: #866575; font-size: 10px; font-weight: 400;
+.st-folder-caption::before {
+  content: ''; width: 5px; height: 5px; flex: 0 0 5px; border: solid #a58193;
+  border-width: 0 1px 1px 0; transform: rotate(-45deg); margin: 0 2px;
 }
+.st-folder-caption[aria-expanded="true"]::before { transform: translateY(-1px) rotate(45deg); }
+.st-folder-caption b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-folder-caption small { color: #8d7281; white-space: nowrap; font-size: 10.5px; }
+.st-folder-entries { margin: 0 8px 8px; }
+.st-folder-entries .st-entry-card { background: rgba(255,255,255,.8); margin-bottom: 5px; }
+.st-folder-entries .st-entry-card:last-child { margin-bottom: 0; }
+.st-folder-loose-title,.st-folder-empty { padding: 5px 4px 7px; color: #8b7180; font-size: 11px; }
+.st-folder-badge { margin-left: 6px; color: #866575; font-size: 10px; font-weight: 400; }
 .st-folder-row input:indeterminate + .st-toggle-slider { background: #dcb6c3; }
 #stEntryFolderField label { display: block; }
-
-#stEntryFolders > summary { color: #725363; }
-#stEntryFolders[open] { margin-bottom: 10px; }
-#stEntryFolderList:not(:empty) { background: #fbf3f7; border-radius: 9px; padding: 0 8px; }
-.st-folder-row:first-child { border-top: 0; }
-.st-folder-caption b { color: #674956; font-weight: 600; }
-.st-folder-caption small { margin-left: 6px; color: #927581; font-size: 10.5px; }
-#stEntryFolderAdd { min-height: 28px; }

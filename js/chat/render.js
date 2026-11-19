@@ -433,7 +433,7 @@ function trailingReplyGroup(hist) {
 
 function cloneGroup(group) {
   return group.map(function(g) {
-    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns, autoPrevAt: g.autoPrevAt,
+    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, errTrail: g.errTrail, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns, autoPrevAt: g.autoPrevAt,
              recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy,
              action: g.action ? JSON.parse(JSON.stringify(g.action)) : undefined };
   });
