@@ -61,7 +61,8 @@ function dramaBoxCss(sel, look) {
   css += cont.join(', ') + ' { margin-top: -10px; padding-top: 2px; border-top-left-radius: 0; border-top-right-radius: 0; grid-template-areas: "text text"; }\n' +
     (lay === 'center' ? cont.join(', ') + ' { grid-template-areas: "text"; }\n' : '') +
     cont.map(function(s) { return s + ' > .chat-msg-avatar, ' + s + ' > .cr-msg-head'; }).join(', ') + ' { display: none; }\n' +
-    hasNext.join(', ') + ' { border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 4px; }\n';
+    hasNext.join(', ') + ' { border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 4px; }\n' +
+    sel + ' + .cr-recap-line { margin-left: 14px; }\n';
   if (look.boxMeta === false) css += row + ' .cr-head-meta { display: none; }\n';
   if (look.boxActs === false) css += row + ' .cr-head-acts { display: none; }\n';
   return css;

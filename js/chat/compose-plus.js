@@ -125,9 +125,10 @@ function appendTextImgMsg(role, m, list, empty) {
   slot.className = 'cr-symbol-custom';
   var use = symbolButton('', function() { if (pair[0] || pair[1]) insertPair(pair); else openEditor(); });
   use.classList.add('cr-symbol-insert');
-  var edit = symbolButton('✎', openEditor);
+  var edit = symbolButton('', openEditor);
   edit.classList.add('cr-symbol-edit');
   edit.setAttribute('aria-label', '编辑自定义符号');
+  edit.title = '编辑自定义符号';
   function paintSlot() {
     var set = !!(pair[0] || pair[1]);
     slot.classList.toggle('is-set', set);
@@ -151,8 +152,7 @@ function appendTextImgMsg(role, m, list, empty) {
 
 // =============================================
 // 剧情存档（用户要的，2026-11-11）：符号栏最右边「总结」打开小窗
-// · 「显示每轮摘要」开关：剧情里每次回复藏着的那句 <前情>，在气泡 / 文本框最下面默认折叠（.cr-recap-line；
-//   一直画着，#appChatRoom.cr-show-recap 才显示），存 mphone_recap_show
+// · 「显示每轮摘要」开关：每轮回复的 <前情> 折叠显示在气泡或文本框下方，存 mphone_recap_show
 // · 存档：选一段范围（从第几条到第几条），把这一段总结成一个存档——「哪次发生了什么」各存各的，不串成一长段（用户要的）。
 //   「合并摘要」（这一段每轮的摘要，省）/「总结全文」（读这一段的原文，太长时前面的用摘要代替），结果和名字都能改，点保存才存
 //   存 char.dramaSaves = [{ id, title, text, fromT, toT, from, to, at }]：fromT / toT 是这一段第一条、最后一条消息的时间，范围靠它认（删消息、重新生成后不会错位，
@@ -160,10 +160,16 @@ function appendTextImgMsg(role, m, list, empty) {
 //   js/chat/prompt.js 的 dramaSavesOf：聊天窗口的【剧情空间里的事】和剧情窗口的【更早的剧情】都先一个个列存档，存档没盖到的回合再接每轮摘要
 // =============================================
 var dramaRecapShow = !!mphoneStore.load('mphone_recap_show', false);
-function dramaRecapApply() { var room = document.getElementById('appChatRoom'); if (room) room.classList.toggle('cr-show-recap', dramaRecapShow); }
+function dramaRecapApply() {
+  appChatRoom.classList.toggle('cr-show-recap', dramaRecapShow);
+  document.querySelectorAll('#dramaMsgList > .chat-msg-row').forEach(function(row) {
+    if (!row._dramaRecap) return;
+    if (dramaRecapShow) row.after(row._dramaRecap);
+    else row._dramaRecap.remove();
+  });
+}
 dramaRecapApply();
-function dramaRecapLine(bubble, m) {
-  if (!bubble || !m || !m.recap || bubble.querySelector('.cr-recap-line')) return;
+function dramaRecapLine(row, m) {
   var details = document.createElement('details');
   details.className = 'cr-recap-line';
   var summary = document.createElement('summary');
@@ -172,7 +178,9 @@ function dramaRecapLine(bubble, m) {
   body.className = 'cr-recap-text';
   body.textContent = m.recap;
   details.append(summary, body);
-  bubble.appendChild(details);
+  row._dramaRecap = details;
+  row._extras.push(details);
+  if (dramaRecapShow) row.after(details);
 }
 var DRAMA_SUM_RAW_MAX = 40000;   // 总结全文时最多读多少字的原文（更早的用摘要）
 function dramaSumList(idx) { return getDramaHistory(idx).filter(function(m) { return !m.action; }); }
