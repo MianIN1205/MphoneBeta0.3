@@ -32,6 +32,35 @@ function syncDefaultMphoneLayout() {
 if (mphoneFullViewport.addEventListener) mphoneFullViewport.addEventListener('change', syncDefaultMphoneLayout);
 else mphoneFullViewport.addListener(syncDefaultMphoneLayout);
 
+// 聊天和剧情共用「请求回复」按钮的图标。
+var replyButtonEmoji = '❄️';
+(function() {
+  var options = [
+    ['❄️', '雪花（默认）'], ['✨', '闪光'], ['💕', '双心'], ['🎐', '风铃'], ['🧸', '小熊'], ['🫧', '泡泡'],
+    ['👻', '小幽灵'], ['🤖', '机器人'], ['💎', '宝石'], ['🍰', '蛋糕'], ['🍪', '饼干'], ['🌼', '小花']
+  ];
+  var saved = mphoneStore.load('mphone_reply_emoji', replyButtonEmoji);
+  if (options.some(function(option) { return option[0] === saved; })) replyButtonEmoji = saved;
+  var group = document.getElementById('replyEmojiOptions');
+  options.forEach(function(option) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reply-emoji-option';
+    button.textContent = option[0];
+    button.title = option[1];
+    button.setAttribute('aria-label', option[1]);
+    button.setAttribute('aria-pressed', String(option[0] === replyButtonEmoji));
+    button.addEventListener('click', function() {
+      group.querySelector('[aria-pressed="true"]').setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-pressed', 'true');
+      replyButtonEmoji = option[0];
+      mphoneStore.save('mphone_reply_emoji', replyButtonEmoji);
+      syncGenBtn();
+    });
+    group.appendChild(button);
+  });
+})();
+
 // =============================================
 // 外观界面 — 状态栏 Toggle & 自定义文字
 // =============================================

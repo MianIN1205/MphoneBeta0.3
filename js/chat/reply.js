@@ -311,7 +311,7 @@ function genBusyChar(char) { return !!(char && (genStates[genKey(char, true)] ||
 function syncGenBtn() {
   var b = document.querySelector('.cr-emoji-btn'), on = !!genHere();
   b.classList.toggle('generating', on);
-  b.textContent = on ? '⏹' : '❄️';
+  b.textContent = on ? '' : replyButtonEmoji;
   b.setAttribute('aria-label', on ? '停止生成' : '请求回复');
 }
 function stopGenerating() { var g = genHere(); if (g) g.ctrl.abort(); }

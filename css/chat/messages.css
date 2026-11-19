@@ -338,7 +338,9 @@
   border-radius: 10px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0;
 }
 .cr-alt-switch button:disabled { opacity: 0.35; cursor: default; }
-.cr-emoji-btn.generating { font-size: 15px; }
+.cr-emoji-btn.generating::before {
+  content: ""; width: 12px; height: 12px; border-radius: 3px; background: #b85e76;
+}
 
 .img-viewer {
   position: absolute; inset: 0; z-index: 9500; display: none;

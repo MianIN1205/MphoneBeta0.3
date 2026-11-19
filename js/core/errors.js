@@ -268,10 +268,16 @@ function openErrInfo(d) {
   document.getElementById('errInfoTitle').textContent = d.summary || errShortLabel(d.err, d.ex);
   fill('errInfoReasons', d.ex.reasons.slice(0, 1));
   fill('errInfoFixes', d.ex.fixes.slice(0, 2));
+  var ctx = d.ctx || {};
+  var endpoint = ctx.url || d.err.url;
   var host = '';
-  try { host = d.ctx.url ? new URL(d.ctx.url).host : ''; } catch (_) {}
-  var firstLine = ['时间：' + fmtMsgTime(d.time), d.ctx.model ? '模型：' + d.ctx.model : ''].filter(Boolean).join(' · ');
-  document.getElementById('errInfoContext').textContent = errRedact(firstLine + (host ? '\n接口：' + host : ''));
+  try { host = new URL(endpoint).host; } catch (_) {}
+  var model = errRedact(ctx.model).replace(/\s+/g, ' ').trim();
+  document.getElementById('errInfoContext').textContent = [
+    '时间：' + (d.time ? fmtMsgTime(d.time) : '未记录'),
+    '接口：' + (host ? errRedact(host) || '已隐藏' : '未记录'),
+    '模型：' + (model || '未记录')
+  ].join('\n');
   document.getElementById('errInfoRaw').textContent =
     (d.summary || errShortLabel(d.err, d.ex)) + '：' +
     errRedact(String(d.err.message || d.err.statusText || '服务未提供报错原文'));
