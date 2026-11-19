@@ -30,6 +30,7 @@ var stEntryDetailDelete = document.getElementById('stEntryDetailDelete');
 var stPresets = [];
 var stActivePresetIdx = 0;
 var stEditingEntryIdx = -1;
+var stRenamingPreset = null;
 
 // 默认剧情预设（这个项目自己写的）：剧情设置里每一类选项对应一条条目，选了哪个就换成哪段话
 var PLOT_OPTS = [
@@ -167,7 +168,7 @@ function loadStPresetsFromStorage() {
           saveStPresetsToStorage();
         }
         // 默认预设改名了（眠花糖机 · 剧情 → Muse · 剧情）
-        stPresets.forEach(function(p) { if (p && p.builtin && p.name === '眠花糖机 · 剧情') { p.name = 'Muse · 剧情'; saveStPresetsToStorage(); } });
+        stPresets.forEach(function(p) { if (p && p.builtin && !p.customName && p.name === '眠花糖机 · 剧情') { p.name = 'Muse · 剧情'; saveStPresetsToStorage(); } });
         return;
       }
     }
@@ -192,6 +193,7 @@ function renderStPresetSelector() {
     item.textContent = p.name;
     item.addEventListener('click', function(e) {
       e.stopPropagation();
+      if (stRenamingPreset) closeStPresetName();
       stActivePresetIdx = idx;
       saveStPresetsToStorage();
       stPresetPopup.classList.remove('open');
@@ -422,16 +424,32 @@ document.addEventListener('click', function() {
   stPresetChevron.classList.remove('open');
 });
 
-stPresetNewBtn.addEventListener('click', function(e) {
-  e.stopPropagation();
-  stPresetNameInput.value = '';
+function openStPresetName(preset) {
+  stRenamingPreset = preset;
+  stPresetNameInput.value = preset ? preset.name : '';
+  stPresetNameInput.placeholder = preset ? '输入新的名称…' : '输入新预设名称…';
+  stPresetNameOk.textContent = preset ? '保存' : '确定';
   stPresetNameBar.classList.add('open');
   stPresetNameInput.focus();
+  if (preset) stPresetNameInput.select();
+}
+
+function closeStPresetName() {
+  stRenamingPreset = null;
+  stPresetNameBar.classList.remove('open');
+}
+
+stPresetNewBtn.addEventListener('click', function(e) {
+  e.stopPropagation();
+  openStPresetName(null);
 });
 
-stPresetNameCancel.addEventListener('click', function() {
-  stPresetNameBar.classList.remove('open');
+document.getElementById('stPresetRenameBtn').addEventListener('click', function() {
+  var current = stPresets[stActivePresetIdx];
+  if (current) openStPresetName(current);
 });
+
+stPresetNameCancel.addEventListener('click', closeStPresetName);
 
 stPresetNameOk.addEventListener('click', function() {
   var name = stPresetNameInput.value.trim();
@@ -439,15 +457,35 @@ stPresetNameOk.addEventListener('click', function() {
     shakeEl(stPresetNameInput);
     return;
   }
+  var renamed = stRenamingPreset;
+  if (renamed && (!stPresets.includes(renamed) || renamed.name === name)) { closeStPresetName(); return; }
+  if (stPresets.some(function(p) { return p.name === name; })) { shakeEl(stPresetNameInput); showToast('已经有叫这个名字的预设了', 'error'); return; }
+  if (renamed) {
+    var old = renamed.name, linked = stPresets.find(function(p) { return p.name === old; }) === renamed;
+    renamed.name = name;
+    if (renamed.builtin) renamed.customName = true;
+    if (linked) {
+      var references = charList.filter(function(char) { return char.promptPresetName === old; });
+      references.forEach(function(char) { char.promptPresetName = name; });
+      if (references.length) saveCharList();
+    }
+    saveStPresetsToStorage();
+    closeStPresetName();
+    renderStPresetSelector();
+    renderStEntryList();
+    renderQuickBar();
+    showToast('✓ 已改名为「' + name + '」', 'success');
+    return;
+  }
+
   var cur = stPresets[stActivePresetIdx];
   var copiedEntries = (cur && Array.isArray(cur.entries))
     ? JSON.parse(JSON.stringify(cur.entries))
     : [];
-  if (stPresets.some(function(p) { return p.name === name; })) { shakeEl(stPresetNameInput); showToast('已经有叫这个名字的预设了', 'error'); return; }
   stPresets.push({ name: name, entries: copiedEntries, folders: cur ? stPresetFolderNames(cur) : [] });
   stActivePresetIdx = stPresets.length - 1;
   saveStPresetsToStorage();
-  stPresetNameBar.classList.remove('open');
+  closeStPresetName();
   renderStPresetSelector();
   renderStEntryList();
   showToast('✓ 已新建预设「' + name + '」', 'success');
