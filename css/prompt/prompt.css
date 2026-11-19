@@ -355,7 +355,6 @@
   stroke-linecap: round; stroke-linejoin: round; fill: none;
 }
 .st-preset-icon-btn.danger { background: rgba(208, 60, 60, 0.08); color: #c04040; }
-.st-preset-rename-btn { width: 42px; font: inherit; font-size: 12px; }
 
 .st-preset-name-bar {
   display: none; align-items: center; gap: 6px; margin-bottom: 12px;

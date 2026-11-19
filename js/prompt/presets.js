@@ -710,26 +710,64 @@ function stPresetFromJson(json, fallbackName) {
     }
     throw new Error('不是酒馆的对话补全预设（找不到 prompts）');
   }
-  var byId = {};
-  json.prompts.forEach(function(p) { if (p && p.identifier) byId[p.identifier] = p; });
-  var orders = Array.isArray(json.prompt_order) ? json.prompt_order : [];
+  var byId = new Map();
+  json.prompts.forEach(function(p) { if (p && p.identifier) byId.set(p.identifier, p); });
+  var orders = Array.isArray(json.prompt_order) ? json.prompt_order.filter(function(o) { return o && Array.isArray(o.order); }) : [];
   // 优先用全局顺序（character_id 100001），否则用条目最多的那份
-  var order = orders.filter(function(o) { return o && o.character_id === 100001; })[0] ||
-    orders.slice().sort(function(a, b) { return ((b && b.order) || []).length - ((a && a.order) || []).length; })[0];
-  var list = (order && Array.isArray(order.order))
-    ? order.order.map(function(o) { return { p: byId[o.identifier], enabled: o.enabled !== false }; })
-    : json.prompts.map(function(p) { return { p: p, enabled: p.enabled !== false }; });
+  var order = orders.find(function(o) { return String(o.character_id) === '100001'; }) ||
+    orders.slice().sort(function(a, b) { return b.order.length - a.order.length; })[0];
+  var list = order
+    ? order.order.filter(Boolean).map(function(o) { return { p: byId.get(o.identifier), enabled: o.enabled !== false, folder: o.folder || o.group }; })
+    : json.prompts.filter(Boolean).map(function(p) { return { p: p, enabled: p.enabled !== false }; });
+  var grouping = stImportedPresetGroups(json);
+  var section = '';
   // 酒馆里排在「聊天记录」（chatHistory）占位后面的条目，导进来也放在聊天记录后面
   var afterHist = false;
-  var entries = list.filter(function(x) {
-    if (x.p && x.p.identifier === 'chatHistory') { afterHist = true; return false; }
-    x.after = afterHist;
-    return x.p && !x.p.marker && String(x.p.content || '').trim();
-  }).map(function(x) {
-      return { name: x.p.name || x.p.identifier || '未命名条目', role: toRole(x.p.role), enabled: x.enabled, content: String(x.p.content), pos: x.after ? 'after' : 'before' };
-    });
+  var entries = [];
+  list.forEach(function(x) {
+    var p = x.p;
+    if (!p) return;
+    if (p.identifier === 'chatHistory') { afterHist = true; return; }
+    var name = String(p.name || p.identifier || '未命名条目');
+    var content = String(p.content || '');
+    var explicit = grouping.member.get(p.identifier) || grouping.nameOf(x.folder || p.folder || p.group);
+    var header = !explicit && /^(?:[=＝]{2,}|[-－—]{2,})\s*(.+?)\s*(?:[=＝\-－—]{2,})?$/.exec(name.trim());
+    if (header && !content.trim()) {
+      var title = header[1].trim();
+      if (!/^[=＝\-－—]+$/.test(title)) {
+        section = section === title ? '' : title;
+        grouping.folders.add(title);
+      }
+      return;
+    }
+    if (p.marker || !content.trim()) return;
+    var prefix = /^(?:〖([^〗]+)〗|【([^】]+)】)\s*\S/.exec(name);
+    var folder = explicit || (prefix && (prefix[1] || prefix[2]).trim()) || section;
+    if (folder) grouping.folders.add(folder);
+    entries.push({ name: name, role: toRole(p.role), enabled: x.enabled, content: content, pos: afterHist ? 'after' : 'before', folder: folder || undefined });
+  });
   if (!entries.length) throw new Error('预设里没有可用的提示词条目');
-  return { name: fallbackName, entries: entries };
+  return { name: fallbackName, entries: entries, folders: Array.from(grouping.folders) };
+}
+
+// Luker 的明确分组通过 identifiers 引用条目；有些导出直接在条目上写 folder/group。
+function stImportedPresetGroups(json) {
+  var defs = [].concat(Array.isArray(json.folders) ? json.folders : [],
+    Array.isArray(json.prompt_groups) ? json.prompt_groups : [],
+    Array.isArray(json.promptGroups) ? json.promptGroups : []);
+  var ids = new Map(), member = new Map(), folders = new Set();
+  defs.forEach(function(def) {
+    var name = typeof def === 'string' ? def.trim() : (def && typeof def.name === 'string' ? def.name.trim() : '');
+    if (!name) return;
+    folders.add(name);
+    if (def.id != null) ids.set(String(def.id), name);
+    if (Array.isArray(def.identifiers)) def.identifiers.forEach(function(id) { if (!member.has(id)) member.set(id, name); });
+  });
+  return { folders: folders, member: member, nameOf: function(value) {
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    var key = String(value).trim();
+    return ids.get(key) || key;
+  } };
 }
 var stPresetImportInput = document.getElementById('stPresetImportInput');
 document.getElementById('stPresetImportBtn').addEventListener('click', function(e) {
