@@ -127,9 +127,17 @@ function autoSendMessage(idx) {
     var showNow = viewing;   // 聊天室开着就画进聊天列表（停在剧情那边时也画，切回来就看得到），另一边的按钮冒小红点
     if (viewing && typeof crMarkOtherView === 'function') crMarkOtherView(true);
     if (typeof replyTakeTags === 'function') text = replyTakeTags(char, text);   // 和正式回复取同一张标签表（js/chat/reply.js）：改密码、星星、待关心、记下持有
+    var autoPrevAt = 0;
+    for (var i = hist.length - 1; i >= 0; i--) {
+      var m = hist[i];
+      if (m.role === 'assistant' && m.time && !m.note && !m.action && !m.cal && !m.narr && !m.pat) {
+        autoPrevAt = m.time;
+        break;
+      }
+    }
     var added = commitAssistantReply(hist, text,
       showNow ? document.getElementById('chatMsgList') : null,
-      showNow ? document.getElementById('chatRoomEmpty') : null);
+      showNow ? document.getElementById('chatRoomEmpty') : null, { autoPrevAt: autoPrevAt });
     if (added.length && typeof peekCaughtDone === 'function') peekCaughtDone(char);
     saveHistories();
     // 主动发来消息的角色出现在消息列表

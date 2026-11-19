@@ -50,9 +50,13 @@ var FOLDER_ARROW = '<svg class="wb-folder-arrow" viewBox="0 0 24 24"><polyline p
 function renderWbList() {
   var wrap = document.getElementById('wbFolderList');
   wrap.innerHTML = '';
-  wbGroups().forEach(function(g) {
+  var groups = wbGroups();
+  if (!groups.some(function(g) { return g.id === WB_NONE; })) groups.push({ id: WB_NONE, name: '未分类', entries: [] });
+  groups.forEach(function(g) {
     var folder = document.createElement('div');
     folder.className = 'wb-folder' + (wbOpenFolders[g.id] ? ' open' : '');
+    folder.dataset.promptDropGroup = g.id;
+    if (g.id === WB_NONE && !g.entries.length) folder.classList.add('prompt-drop-only');
     var head = document.createElement('div');
     head.className = 'wb-folder-head';
     head.innerHTML = FOLDER_ARROW;
@@ -108,6 +112,18 @@ function renderWbList() {
     g.entries.forEach(function(entry) {
       var card = document.createElement('div');
       card.className = 'pf-entry-card';
+      card.dataset.promptDropEntry = '';
+      card._promptEntry = entry;
+      promptDragGrip(card, wrap, function(folderId, target, after) {
+        var belongs = folderId === WB_NONE
+          ? function(e) { return !wbFolders.some(function(f) { return f.id === e.folderId; }); }
+          : function(e) { return e.folderId === folderId; };
+        if (!movePromptEntry(wbEntries, entry, target, after, belongs)) return;
+        entry.folderId = folderId;
+        wbOpenFolders[folderId] = true;
+        saveWbEntries();
+        renderWbList();
+      });
       var cb = document.createElement('div');
       cb.className = 'pf-entry-card-body';
       var nameEl = document.createElement('div');

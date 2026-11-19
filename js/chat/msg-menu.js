@@ -140,6 +140,7 @@ function deleteMsg(t) {
   var i = t.msg ? hist.indexOf(t.msg) : -1;
   if (i >= 0) hist.splice(i, 1);
   (t.row._extras || []).concat(t.row._actionNotes || [], t.row._errNotes || [], t.row._mcpNotes || []).forEach(function(el) { el.remove(); });
+  if (t.row._autoTime) t.row._autoTime.remove();
   t.row.remove();
   saveHistories();
   var list = document.getElementById(t.listId);
@@ -163,6 +164,7 @@ function recallMsg(t) {
   delete m.status;
   var list = document.getElementById(t.listId);
   var notice = renderRecallNotice(m, list, null);
+  notice._autoTime = t.row._autoTime;
   list.insertBefore(notice, t.row);
   (t.row._extras || []).concat(t.row._actionNotes || []).forEach(function(el) { el.remove(); });
   t.row.remove();

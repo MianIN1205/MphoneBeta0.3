@@ -68,3 +68,95 @@ updateFolderBodyRadius();
     }).observe(v, { attributes: true, attributeFilter: ['class'] });
   });
 })();
+
+function movePromptEntry(items, entry, target, after, belongs) {
+  var from = items.indexOf(entry);
+  if (from < 0 || entry === target) return false;
+  items.splice(from, 1);
+  var at = target ? items.indexOf(target) + (after ? 1 : 0) : items.length;
+  if (!target) {
+    for (var i = items.length - 1; i >= 0; i--) {
+      if (belongs(items[i])) { at = i + 1; break; }
+    }
+  }
+  items.splice(at, 0, entry);
+  return true;
+}
+
+function promptDragGrip(card, root, onDrop) {
+  var grip = document.createElement('button');
+  grip.type = 'button';
+  grip.className = 'prompt-drag-grip';
+  grip.setAttribute('aria-label', '拖动排序，点按编辑');
+  grip.textContent = '⠿';
+  var drag = null, suppress = false;
+
+  function targetAt() {
+    var hit = document.elementFromPoint(drag.x, drag.y);
+    var group = hit && hit.closest('[data-prompt-drop-group]');
+    if (!group || !root.contains(group)) return null;
+    var row = hit.closest('[data-prompt-drop-entry]');
+    return { group: group, row: row, after: row && drag.y >= row.getBoundingClientRect().top + row.offsetHeight / 2 };
+  }
+
+  function highlight(target) {
+    if (drag.mark) drag.mark.classList.remove('prompt-drop-on', 'prompt-drop-before', 'prompt-drop-after');
+    drag.mark = target && (target.row || target.group);
+    if (drag.mark && drag.mark !== card) {
+      drag.mark.classList.add(target.row ? (target.after ? 'prompt-drop-after' : 'prompt-drop-before') : 'prompt-drop-on');
+    }
+  }
+
+  function frame() {
+    var bounds = promptFolderBody.getBoundingClientRect();
+    if (drag.y >= bounds.top && drag.y <= bounds.bottom) {
+      if (drag.y - bounds.top < 42) promptFolderBody.scrollTop -= 8;
+      else if (bounds.bottom - drag.y < 42) promptFolderBody.scrollTop += 8;
+    }
+    highlight(targetAt());
+    drag.frame = requestAnimationFrame(frame);
+  }
+
+  grip.addEventListener('pointerdown', function(e) {
+    if (!e.isPrimary || e.button !== 0) return;
+    suppress = false;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    grip.setPointerCapture(e.pointerId);
+    e.stopPropagation();
+  });
+  grip.addEventListener('pointermove', function(e) {
+    if (!drag || drag.id !== e.pointerId) return;
+    if (!drag.active && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    if (!drag.active) {
+      drag.active = true;
+      root.classList.add('prompt-dragging');
+      card.classList.add('prompt-drag-source');
+      frame();
+    }
+  });
+
+  function finish(e, drop) {
+    if (!drag || drag.id !== e.pointerId) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    var target = drag.active && drop ? targetAt() : null;
+    suppress = !!drag.active;
+    cancelAnimationFrame(drag.frame);
+    highlight(null);
+    drag = null;
+    root.classList.remove('prompt-dragging');
+    card.classList.remove('prompt-drag-source');
+    if (target && target.row !== card) onDrop(target.group.dataset.promptDropGroup, target.row && target.row._promptEntry, target.after);
+  }
+
+  grip.addEventListener('pointerup', function(e) { finish(e, true); });
+  grip.addEventListener('pointercancel', function(e) { finish(e, false); });
+  grip.addEventListener('lostpointercapture', function(e) { finish(e, false); });
+  grip.addEventListener('click', function(e) {
+    if (suppress && e.detail) { e.stopPropagation(); e.preventDefault(); }
+    suppress = false;
+  });
+  card.prepend(grip);
+}

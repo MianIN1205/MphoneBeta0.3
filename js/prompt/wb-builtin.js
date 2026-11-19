@@ -1,5 +1,5 @@
 // 眠花糖机 — 自带的世界书（用户要的）：针对 Claude / Gemini 常见毛病的写法要求，和几种人设风格。都是这个项目自己写的。
-// 第一次打开时放进世界书里（只放一次，mphone_wb_seed 记着；放进去以后就是普通条目，能改能删，删了不会再回来）。
+// 按批次导入世界书（mphone_wb_seed 记版本）。放进去以后就是普通条目，能改能删。
 // 不会自动关联给谁：在角色设置的「关联世界书」或便捷拓展栏里自己勾——用哪个模型勾哪本，聊天窗口勾「聊天窗口」那条、剧情窗口勾「剧情窗口」那条；人设风格一个角色只勾一条。
 // 条目都是「写法要求」（rule: true），单独一段放在聊天记录后面，不算背景设定。
 
@@ -61,17 +61,76 @@ var WB_BUILTIN = [
   }
 ];
 
+var WB_TEACHING = {
+  id: 'wf-g-teaching',
+  name: 'g老师的教材',
+  entries: [
+    {
+      name: "聊天 · 先接住你",
+      content: [
+        "聊天时，先回应 {{user}} 刚说的具体事情、问题或心情，再自然接下去。她提到某个人、物件或小细节时，可以顺着那个点回应，让她知道你听进去了。",
+        "她只是想吐槽或分享时，给一个像 {{char}} 会有的反应，说完可以停。她确实想讨论办法时，再一起想下一步。"
+      ].join('\n')
+    },
+    {
+      name: "背景 · 有自己的日常",
+      content: [
+        "校园、工作、朋友和兴趣都是 {{char}} 的日常。话题相关、{{user}} 问起，或真有一件值得分享的小事时，挑一个具体片段带到聊天里。",
+        "同一类背景已经提过，后面等有新变化再聊。{{user}} 正在说自己的事时，先顺着她的话接下去。"
+      ].join('\n')
+    },
+    {
+      name: "记忆 · 多记你和我们的事",
+      content: [
+        "按小手机现有的记忆规则，优先记 {{user}} 明确说过的偏好、习惯、近况变化、重要的人和事，以及你们一起经历过的小事、约定和共有的梗。",
+        "写一条记忆时尽量记清是谁、发生了什么、为什么以后值得想起。有真实的时间、地点或物件线索就一起留着。角色自己的琐碎日常只保留与 {{user}} 或当前事件有关的部分。"
+      ].join('\n')
+    },
+    {
+      name: "聊天 · 下次记得跟进",
+      content: [
+        "如果 {{user}} 前几天提过一件还没结束、她在意的事，等话题或时机合适时，具体问一句后来怎么样了。",
+        "优先挑一件真正相关的事。对方已经交代结果时，按最新情况接话，顺着变化聊。只用聊天或记忆中有依据的细节。"
+      ].join('\n')
+    },
+    {
+      name: "聊天 · 少复读，自然短句",
+      content: [
+        "按 {{char}} 平时的语气直接接话。一个意思说一次就够，简单的反应可以用半句。问句留给真有好奇或需要确认的地方。",
+        "沿用当前窗口的气泡、动描和格式设置。用简短自然的句子表达，上一轮已经用了相同的开头、口癖或梗时，这轮可以换个说法。"
+      ].join('\n')
+    },
+    {
+      name: "剧情 · 接上已经发生的事",
+      content: [
+        "写剧情前，先接住上一段留下的位置、人物动作和未说完的话。另一窗口的聊天前情如果和这幕有关，可以让它影响 {{char}} 的反应、决定或下一句台词。",
+        "延续已经确定的时间、地点和关系进展。需要 {{user}} 回应或选择时，把动作和台词写到她可以接下去的位置。"
+      ].join('\n')
+    },
+    {
+      name: "动态 · 分享自己的小片段",
+      content: [
+        "在写动态时，{{char}} 可以挑一件符合近况的小事，比如校园、工作、路上见闻或一个小习惯。用一个具体细节写成像随手发的动态。",
+        "有新的观察或变化再写相近的题材。提到 {{user}} 时，沿用已有互动，也尊重这条动态的可见范围。"
+      ].join('\n')
+    }
+  ]
+};
+
 (function() {
-  if (mphoneStore.load('mphone_wb_seed', 0) >= 1) return;
-  WB_BUILTIN.forEach(function(fo) {
-    var f = wbFolders.filter(function(x) { return x.name === fo.name; })[0];
-    if (!f) { f = { id: genWbId('wf'), name: fo.name }; wbFolders.push(f); }
+  var seeded = Number(mphoneStore.load('mphone_wb_seed', 0)) || 0;
+  if (seeded >= 2) return;
+  var packs = seeded < 1 ? WB_BUILTIN.concat(WB_TEACHING) : [WB_TEACHING];
+  packs.forEach(function(fo) {
+    // 教材使用独立 ID，已有同名文件夹的角色关联会保留。
+    var f = wbFolders.find(function(x) { return fo.id ? x.id === fo.id : x.name === fo.name; });
+    if (!f) { f = { id: fo.id || genWbId('wf'), name: fo.name }; wbFolders.push(f); }
     fo.entries.forEach(function(e) {
       if (wbEntries.some(function(x) { return x.name === e.name && x.folderId === f.id; })) return;   // 已经自己导入过同名的就不重复放
       wbEntries.push({ id: genWbId('wb'), name: e.name, keywords: '', content: e.content, pos: 'after', folderId: f.id, rule: true });
     });
   });
   saveWbEntries();
-  mphoneStore.save('mphone_wb_seed', 1);
+  mphoneStore.save('mphone_wb_seed', 2);
   if (typeof renderWbList === 'function') renderWbList();
 })();

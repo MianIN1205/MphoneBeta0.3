@@ -15,6 +15,7 @@ var stPresetNameInput   = document.getElementById('stPresetNameInput');
 var stPresetNameOk      = document.getElementById('stPresetNameOk');
 var stPresetNameCancel  = document.getElementById('stPresetNameCancel');
 var stEntryList         = document.getElementById('stEntryList');
+var stEntryPreset       = document.getElementById('stEntryPreset');
 var stAddEntryBtn       = document.getElementById('stAddEntryBtn');
 
 var stEntryDetailView   = document.getElementById('stEntryDetailView');
@@ -208,9 +209,29 @@ function renderStEntryList() {
   renderPlotCard(cur);
   if (!cur || !Array.isArray(cur.entries)) return;
 
+  var groups = {};
+  ['before', 'after'].forEach(function(pos) {
+    var group = document.createElement('section');
+    group.className = 'prompt-entry-group';
+    group.dataset.promptDropGroup = pos;
+    var title = document.createElement('div');
+    title.className = 'prompt-entry-group-title';
+    title.textContent = pos === 'before' ? '聊天记录前' : '聊天记录后';
+    group.appendChild(title);
+    groups[pos] = group;
+    stEntryList.appendChild(group);
+  });
   cur.entries.forEach(function(entry, idx) {
     var card = document.createElement('div');
     card.className = 'st-entry-card' + (entry.enabled ? '' : ' disabled');
+    card.dataset.promptDropEntry = '';
+    card._promptEntry = entry;
+    promptDragGrip(card, stEntryList, function(pos, target, after) {
+      if (!movePromptEntry(cur.entries, entry, target, after, function(e) { return (e.pos === 'after' ? 'after' : 'before') === pos; })) return;
+      entry.pos = pos;
+      saveStPresetsToStorage();
+      renderStEntryList();
+    });
 
     var badge = document.createElement('span');
     var roleKey = (entry.role === 'user' || entry.role === 'assistant') ? entry.role : 'system';
@@ -255,7 +276,7 @@ function renderStEntryList() {
     card.appendChild(badge);
     card.appendChild(main);
     card.appendChild(toggleLabel);
-    stEntryList.appendChild(card);
+    groups[entry.pos === 'after' ? 'after' : 'before'].appendChild(card);
   });
 }
 
@@ -348,6 +369,10 @@ function openStEntryDetail(idx) {
   var cur = stPresets[stActivePresetIdx];
   if (!cur) return;
   stEditingEntryIdx = idx;
+  document.getElementById('stEntryPresetField').hidden = idx < 0 || stPresets.length < 2;
+  stEntryPreset.replaceChildren();
+  stPresets.forEach(function(p, i) { stEntryPreset.add(new Option(p.name, i)); });
+  stEntryPreset.value = String(stActivePresetIdx);
   if (idx >= 0 && cur.entries[idx]) {
     var entry = cur.entries[idx];
     stEntryDetailTitle.textContent = entry.name || '编辑条目';
@@ -395,7 +420,16 @@ stEntryDetailSave.addEventListener('click', function() {
     cur.entries[stEditingEntryIdx].name = name;
     cur.entries[stEditingEntryIdx].role = role;
     cur.entries[stEditingEntryIdx].content = content;
-    cur.entries[stEditingEntryIdx].pos = pos;
+    var entry = cur.entries[stEditingEntryIdx];
+    entry.pos = pos;
+    var target = stPresets[Number(stEntryPreset.value)];
+    if (target && target !== cur) {
+      if (!Array.isArray(target.entries)) target.entries = [];
+      cur.entries.splice(stEditingEntryIdx, 1);
+      delete entry.key;
+      target.entries.push(entry);
+      showToast('已移到「' + target.name + '」', 'success');
+    }
   } else {
     cur.entries.push({ name: name, role: role, enabled: true, content: content, pos: pos });
   }

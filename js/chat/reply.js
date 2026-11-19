@@ -39,7 +39,7 @@ function replyTakeTags(char, text) {
   return text;
 }
 
-function commitAssistantReply(hist, raw, list, empty, mcpLead) {
+function commitAssistantReply(hist, raw, list, empty, firstMeta) {
   var status = '', headStatus = '', recap = '', patBack = false;
   var th = takeThink(raw);   // 思维链：摘出来存在第一条上，不显示成气泡（见 js/chat/prompt.js）
   var outFiles = [];
@@ -120,7 +120,7 @@ function commitAssistantReply(hist, raw, list, empty, mcpLead) {
   if (illus && isDramaHist && typeof imgUse === 'function' && imgUse('drama') === 'gen') added.push({ role: 'assistant', content: '[配图] ' + illus, textImg: illus, illus: true, time: now });
   var pc = charOfHistory(hist);
   if (patBack && pc && chatHistories[pc.id] === hist && Object.assign({}, DEFAULT_CHAT_CFG, pc.chatCfg || {}).patOn) added.push({ role: 'assistant', content: '', pat: 'user', time: now });
-  if (mcpLead && added[0]) added[0].mcpLead = mcpLead;
+  if (firstMeta && added[0]) Object.assign(added[0], firstMeta);
   added.forEach(function(m) {
     hist.push(m);
     if (list) renderHistMsg(m, list, empty);
@@ -407,7 +407,7 @@ function sendMsg(userText, requestOnly, onDone) {
     if (!isGrp) text = replyTakeTags(replyChar, text);   // 改密码、星星、待关心、记下持有…（见上面的标签表）
     var mark = list ? list.lastChild : null;
     var lead = !toolAnchor && toolRun.entries.length ? toolRun : null;
-    var added = isGrp ? groupCommitReply(replyChar, hist, text, list) : commitAssistantReply(hist, text, list, null, lead);
+    var added = isGrp ? groupCommitReply(replyChar, hist, text, list) : commitAssistantReply(hist, text, list, null, lead ? { mcpLead: lead } : null);
     if (lead && added.length && generation.toolNotice) {
       var provisional = generation.toolNotice;
       if (list && provisional.open) {

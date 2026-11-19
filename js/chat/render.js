@@ -223,28 +223,37 @@ function fillDramaText(el, text) {
   });
 }
 
-// 渲染一条历史消息（含图片、引用、状态栏）；行元素记住对应的记录（_msg）和附属元素（_extras），方便编辑 / 删除
+// 渲染一条历史消息（含图片、引用、状态栏）；行元素记住对应记录及附属元素。
 function renderHistMsg(m, list, empty) {
   list = list || getActiveMsgListEl();
   empty = empty || getActiveEmptyEl();
+  var autoPrevAt = Number(m.autoPrevAt);
+  var autoGap = list.id === 'chatMsgList' && autoPrevAt > 0 && autoPrevAt <= m.time;
+  var sep;
+  if (m.time) {
+    if (autoGap || !list._lastTime || m.time - list._lastTime >= 5 * 60000) {
+      sep = document.createElement('div');
+      sep.className = 'cr-time-sep';
+      var previousAt = autoGap ? autoPrevAt : list._lastTime;
+      if (autoGap || previousAt && m.time - previousAt >= 3600000) {
+        sep.classList.add('cr-time-gap');
+        sep.textContent = '距离上次聊天 ' + durText(m.time - previousAt);
+      } else sep.textContent = fmtMsgTime(m.time);
+      list.appendChild(sep);
+    }
+    list._lastTime = m.time;
+  }
+  var row = renderHistMsgContent(m, list, empty);
+  if (row && autoGap) row._autoTime = sep;
+  return row;
+}
+function renderHistMsgContent(m, list, empty) {
   // 以前角色忘了写 </status>，状态原样留在了消息文字里：拿出来放回状态栏
   if (m.role === 'assistant' && typeof m.content === 'string' && /<status>/i.test(m.content) && typeof takeStatus === 'function') {
     var st = takeStatus(m.content);
     m.content = st.text;
     if (st.status && !m.status) m.status = st.status;
     if (typeof saveHistories === 'function') setTimeout(saveHistories, 0);
-  }
-  // 和上一条相隔 5 分钟以上（或是这一屏第一条）时，先插一条居中的时间；隔了一个小时以上改成一行「距离上次聊天 多久」
-  if (m.time) {
-    if (!list._lastTime || m.time - list._lastTime >= 5 * 60000) {
-      var sep = document.createElement('div');
-      sep.className = 'cr-time-sep';
-      // 隔了一个小时以上只写这一行，不再写时间（用户要的）
-      if (list._lastTime && m.time - list._lastTime >= 3600000) { sep.classList.add('cr-time-gap'); sep.textContent = '距离上次聊天 ' + durText(m.time - list._lastTime); }
-      else sep.textContent = fmtMsgTime(m.time);
-      list.appendChild(sep);
-    }
-    list._lastTime = m.time;
   }
   // 版本切换只留在最新一次回复上：后面来了别的消息，就收起前面的切换条
   if (list._altTime && !(m.role === 'assistant' && m.time === list._altTime)) {
@@ -301,6 +310,7 @@ function renderHistMsg(m, list, empty) {
       delete m._flash;
       if (!r.row.parentNode) return;
       var notice = renderRecallNotice(m, list, null);
+      notice._autoTime = r.row._autoTime;
       list.insertBefore(notice, r.row);
       (r.row._extras || []).concat(r.row._actionNotes || []).forEach(function(el) { el.remove(); });
       r.row.remove();
@@ -423,7 +433,7 @@ function trailingReplyGroup(hist) {
 
 function cloneGroup(group) {
   return group.map(function(g) {
-    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns,
+    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns, autoPrevAt: g.autoPrevAt,
              recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy,
              action: g.action ? JSON.parse(JSON.stringify(g.action)) : undefined };
   });
