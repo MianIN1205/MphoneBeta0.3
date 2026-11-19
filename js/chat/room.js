@@ -13,7 +13,7 @@ backChatRoom.addEventListener('click', function() {
 // 聊天对话界面 — 设置按钮 → 角色设置界面
 chatRoomSettingsBtn.addEventListener('click', function() {
   if (openingChatCharIdx === -1) return;
-  openCharSetting(openingChatCharIdx, null, true);
+  openCharSetting(openingChatCharIdx, null, true, currentCrSubView === 'contacts' ? 'drama' : 'chat');
 });
 
 // 把角色的聊天背景、气泡样式、专属 CSS 应用到聊天室；char 为 null 时清除
@@ -260,14 +260,29 @@ function viewLookPart(char, drama) {
 }
 function roomLookPart(char) { return viewLookPart(char, currentCrSubView === 'contacts'); }
 
+function paintRoomBackground(room, part) {
+  var content = room.querySelector('#chatRoomContent');
+  room.style.removeProperty('background');
+  content.style.removeProperty('background');
+  if (!part) return;
+
+  var bg = part.chatBg || DEFAULT_CHAT_BG;
+  var fullColor = tplBgColor(part);   // 仿siya 铺满顶栏和消息区
+  var target = fullColor ? room : content;
+  if (bg.image) {
+    target.style.setProperty('background', 'url(' + JSON.stringify(bg.image) + ') center / cover no-repeat', 'important');
+    if (fullColor) content.style.setProperty('background', 'transparent', 'important');
+  } else {
+    target.style.background = fullColor || bg.color || '';
+  }
+}
+
 function applyChatRoomStyle(char) {
-  var content = document.getElementById('chatRoomContent');
-  content.style.background = '';
+  var part = char ? roomLookPart(char) : null;
+  paintRoomBackground(appChatRoom, part);
   appChatRoom.classList.remove('cr-no-avatar', 'cr-head-avatar', 'cr-head-left');
-  appChatRoom.style.background = '';
   if (!char) { crCharStyleEl.textContent = ''; crQbPlace(false); return; }
 
-  var part = roomLookPart(char);
   var look = Object.assign({}, DEFAULT_LOOK, part.look || {});
   if (!look.showAvatar) appChatRoom.classList.add('cr-no-avatar');
   if (look.headAvatar) appChatRoom.classList.add('cr-head-avatar');
@@ -278,11 +293,6 @@ function applyChatRoomStyle(char) {
   appChatRoom.classList.toggle('cr-has-status', statusOnFor(char, stDrama) && ((stDrama ? dramaHistories : chatHistories)[char.id] || []).some(function(m) { return m.status; }));
   if (typeof paintChatSubTitle === 'function') paintChatSubTitle(char);
 
-  var bg = part.chatBg || DEFAULT_CHAT_BG;
-  var bgCss = bg.image ? 'url(' + bg.image + ') center / cover no-repeat' : (tplBgColor(part) || bg.color || '');
-  // 仿siya：背景铺满整个聊天室（顶栏透明，背景要一直到最上面）
-  if (tplBgColor(part)) appChatRoom.style.background = bgCss;
-  else if (bgCss) content.style.background = bgCss;
   crQbPlace(!!tplBgColor(part));   // 仿siya：拓展栏挤进顶栏那一行（用户要的：顶栏太空）
 
   // 状态栏样式只属于聊天窗口

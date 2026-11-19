@@ -63,7 +63,7 @@ function unpress() { clearTimeout(pressTimer); if (pressBubble) pressBubble.clas
   var timer = null, sx = 0, sy = 0;
   list.addEventListener('pointerdown', function(e) {
     var bubble = e.target.closest('.chat-msg-bubble');
-    if (!bubble || bubble.closest('.cr-typing-row')) return;
+    if (!bubble || bubble.closest('.cr-typing-row') || e.target.closest('.cr-recap-line > summary')) return;
     if (typeof msgSelecting === 'function' && msgSelecting()) return;   // 多选时点一下就是勾选
     sx = e.clientX; sy = e.clientY;
     clearTimeout(timer);

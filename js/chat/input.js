@@ -58,22 +58,29 @@ crSendBtn.addEventListener('click', function(e) {
   crInput.focus();
 });
 
+function sendCrDraft() {
+  var text = crInput.value.trim();
+  if (!text || openingChatCharIdx === -1) return;
+  appendUserMsg(text);
+  crInput.value = '';
+  crInput.style.height = '';
+}
+
 // 键盘 Enter（无 Shift）：将输入框内容作为一条用户消息发送，不触发 AI
 crInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
     e.preventDefault();
-    var text = crInput.value.trim();
-    if (!text) return;
-    appendUserMsg(text);
-    crInput.value = ''; crInput.style.height = '';
+    sendCrDraft();
   }
 });
 
 crInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 80) + 'px'; });
 
-// ❄️ 请求回复：触发 AI 调用，使用已有历史，不追加用户消息
+// ❄️ 请求回复：先发输入框里已有的草稿，再用当前窗口的历史请求回复
 document.querySelector('.cr-emoji-btn').addEventListener('click', function(e) {
   e.stopPropagation();
   if (genHere()) { stopGenerating(); return; }
-  if (openingChatCharIdx !== -1) sendMsg('', true);
+  if (openingChatCharIdx === -1) return;
+  sendCrDraft();
+  sendMsg('', true);
 });

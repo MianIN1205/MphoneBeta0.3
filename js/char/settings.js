@@ -486,6 +486,7 @@ function readLookForm() {
 // ---------- 美化：聊天窗口 / 剧情窗口各一套 ----------
 // 剧情窗口没单独设置过时，沿用聊天窗口的样子（状态栏只有聊天窗口有）
 var csLookView = 'chat';
+var csRoomLookView = null;
 var csLookParts = { chat: {}, drama: {} };
 function lookPartsOf(char) {
   // 两边各拷一份，互不牵连；剧情窗口没单独设置过时只借聊天窗口的背景和颜色（viewLookPart，不带聊天的 CSS 和聊天专用的气泡模板）
@@ -511,6 +512,9 @@ function setLookPartForm(view) {
   customCssInput.value = p.customCss || '';
   if (typeof customCssPresetBox !== 'undefined') customCssPresetBox.refresh();
   document.getElementById('csStatusWrap').style.display = view === 'chat' ? '' : 'none';
+  document.getElementById('csBgLabel').textContent = view === 'drama' ? '剧情背景' : '聊天背景';
+  var background = document.getElementById('csLookBackground');
+  document.getElementById(view === 'drama' ? 'csLookLayout' : 'csDramaFmtWrap').before(background);
   document.querySelectorAll('#csLookViewRow .pf-radio-btn').forEach(function(b) {
     b.classList.toggle('selected', b.dataset.view === view);
   });
@@ -528,6 +532,7 @@ function syncDramaFormatUi() {
   var sel = document.querySelector('#dramaFormatRow .pf-radio-btn.selected');
   var fmt = drama && sel ? sel.dataset.format : '';
   document.getElementById('csDramaFmtWrap').style.display = drama ? '' : 'none';
+  document.getElementById('csDramaDetails').style.display = drama ? '' : 'none';
   document.getElementById('csLookPreview').style.display = drama ? 'none' : '';   // 气泡小预览只给聊天窗口
   document.getElementById('layoutFormatAutoRow').style.display = drama ? 'none' : '';
   document.getElementById('csThemeWrap').style.display = fmt === 'custom' ? 'none' : '';
@@ -655,8 +660,8 @@ function fillCharForm(char) {
   csPendingArc = char.pendingArc || null;   // 从小手机备份导入时带的聊天记录：保存角色时存成档案
 
   csLookParts = lookPartsOf(char);
-  csLookView = 'chat';
-  setLookPartForm('chat');
+  csLookView = csRoomLookView || 'chat';
+  setLookPartForm(csLookView);
   setAutoForm(char.auto);
   setChatCfgForm(char.chatCfg);
   // 世界书分「聊天窗口 / 剧情窗口」两栏各自关联（用户要的）；剧情还没单独设置过时从空白开始
@@ -910,8 +915,11 @@ function updateCharWbCount() {
 // 打开角色设置：idx = -1 为新建
 // draft：新建时预填的数据（导入角色卡用）
 // keepView：从聊天室打开时，本次对话期间保持上次退出时的页面和滚动位置
-function openCharSetting(idx, draft, keepView) {
+// roomLookView：从聊天或剧情的齿轮进入时，美化只编辑这一边
+function openCharSetting(idx, draft, keepView, roomLookView) {
   editingCharIndex = idx;
+  csRoomLookView = roomLookView || null;
+  document.getElementById('csLookViewRow').style.display = csRoomLookView ? 'none' : '';
   if (idx === -1) fillCharForm(draft || {});
   else fillCharForm(charList[idx]);
   document.getElementById('charDeleteBtn').style.display = (idx === -1 || (charList[idx] && charList[idx].builtinAssistant)) ? 'none' : '';   // MianIN 删不掉
@@ -920,7 +928,10 @@ function openCharSetting(idx, draft, keepView) {
   var v = csViewState;
   var keep = keepView && v && charList[idx] && v.id === charList[idx].id && v.session === chatRoomSession;
   goCsPage(keep ? v.page : 0, false);
-  document.querySelectorAll('#csPages .cs-page').forEach(function(p, i) { p.scrollTop = keep ? (v.tops[i] || 0) : 0; });
+  document.querySelectorAll('#csPages .cs-page').forEach(function(p, i) {
+    var sameLook = p.id !== 'csLookPage' || (v && v.lookView === csLookView);
+    p.scrollTop = keep && sameLook ? (v.tops[i] || 0) : 0;
+  });
 }
 
 // 退出角色设置时记下当前在哪一页、每页滚到哪里（只在同一次打开的对话里沿用）
@@ -930,7 +941,7 @@ function rememberCsView() {
   var char = charList[editingCharIndex];
   if (!char || editingCharIndex !== openingChatCharIdx) { csViewState = null; return; }
   csViewState = {
-    id: char.id, session: chatRoomSession,
+    id: char.id, session: chatRoomSession, lookView: csLookView,
     page: Math.round(csPages.scrollLeft / Math.max(1, csPages.clientWidth)),
     tops: Array.prototype.map.call(document.querySelectorAll('#csPages .cs-page'), function(p) { return p.scrollTop; })
   };

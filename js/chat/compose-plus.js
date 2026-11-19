@@ -83,28 +83,75 @@ function appendTextImgMsg(role, m, list, empty) {
 // =============================================
 (function() {
   var bar = document.getElementById('crSymbolBar'), input = document.getElementById('crInput');
-  [['【', '】'], ['{{', '}}'], ['「', '」'], ['“', '”']].forEach(function(p) {
+  function insertPair(p) {
+    var start = input.selectionStart, end = input.selectionEnd;
+    var selected = input.value.slice(start, end);
+    input.setRangeText(p[0] + selected + p[1], start, end, 'end');
+    var at = start + p[0].length + selected.length;
+    input.focus();
+    input.setSelectionRange(at, at);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function symbolButton(text, onClick) {
     var b = document.createElement('button');
+    b.type = 'button';
     b.className = 'cr-symbol-btn';
-    b.textContent = p[0] + p[1];
+    b.textContent = text;
     b.addEventListener('pointerdown', function(e) { e.preventDefault(); });   // 不抢输入框的焦点
     b.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      var s = input.selectionStart, en = input.selectionEnd, v = input.value;
-      input.value = v.slice(0, s) + p[0] + v.slice(s, en) + p[1] + v.slice(en);
-      var at = s + p[0].length + (en - s);
-      input.focus();
-      input.setSelectionRange(at, at);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+      onClick();
     });
-    bar.appendChild(b);
+    return b;
+  }
+  [['【', '】'], ['{{', '}}'], ['「', '」'], ['“', '”'], ['（', '）']].forEach(function(p) {
+    bar.appendChild(symbolButton(p.join(''), function() { insertPair(p); }));
+  });
+
+  var overlay = document.getElementById('crCustomSymbolOverlay');
+  var left = document.getElementById('crSymbolLeft'), right = document.getElementById('crSymbolRight');
+  var saved = mphoneStore.load('mphone_drama_symbol', []);
+  function normalizeSymbol(value) {
+    return typeof value === 'string' ? Array.from(value.trim()).slice(0, 4).join('') : '';
+  }
+  var pair = [normalizeSymbol(saved && saved[0]), normalizeSymbol(saved && saved[1])];
+  function openEditor() {
+    left.value = pair[0]; right.value = pair[1];
+    overlay.classList.add('open');
+  }
+  function closeEditor() { overlay.classList.remove('open'); }
+  var slot = document.createElement('div');
+  slot.className = 'cr-symbol-custom';
+  var use = symbolButton('', function() { if (pair[0] || pair[1]) insertPair(pair); else openEditor(); });
+  use.classList.add('cr-symbol-insert');
+  var edit = symbolButton('✎', openEditor);
+  edit.classList.add('cr-symbol-edit');
+  edit.setAttribute('aria-label', '编辑自定义符号');
+  function paintSlot() {
+    var set = !!(pair[0] || pair[1]);
+    slot.classList.toggle('is-set', set);
+    use.textContent = set ? pair.join('') : '自定义';
+    use.title = set ? '插入自定义符号 ' + pair.join('') : '设置自定义符号';
+    edit.hidden = !set;
+  }
+  slot.append(use, edit);
+  bar.appendChild(slot);
+  paintSlot();
+  document.getElementById('crCustomSymbolCancel').addEventListener('click', closeEditor);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeEditor(); });
+  document.getElementById('crCustomSymbolForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    pair = [normalizeSymbol(left.value), normalizeSymbol(right.value)];
+    mphoneStore.save('mphone_drama_symbol', pair);
+    paintSlot();
+    closeEditor();
   });
 })();
 
 // =============================================
 // 剧情存档（用户要的，2026-11-11）：符号栏最右边「总结」打开小窗
-// · 「显示每轮摘要」开关：剧情里每次回复藏着的那句 <前情>，显示在气泡 / 文本框最下面（居左灰色小字、不加背景，.cr-recap-line；
+// · 「显示每轮摘要」开关：剧情里每次回复藏着的那句 <前情>，在气泡 / 文本框最下面默认折叠（.cr-recap-line；
 //   一直画着，#appChatRoom.cr-show-recap 才显示），存 mphone_recap_show
 // · 存档：选一段范围（从第几条到第几条），把这一段总结成一个存档——「哪次发生了什么」各存各的，不串成一长段（用户要的）。
 //   「合并摘要」（这一段每轮的摘要，省）/「总结全文」（读这一段的原文，太长时前面的用摘要代替），结果和名字都能改，点保存才存
@@ -117,10 +164,15 @@ function dramaRecapApply() { var room = document.getElementById('appChatRoom'); 
 dramaRecapApply();
 function dramaRecapLine(bubble, m) {
   if (!bubble || !m || !m.recap || bubble.querySelector('.cr-recap-line')) return;
-  var d = document.createElement('div');
-  d.className = 'cr-recap-line';
-  d.textContent = '摘要：' + m.recap;
-  bubble.appendChild(d);
+  var details = document.createElement('details');
+  details.className = 'cr-recap-line';
+  var summary = document.createElement('summary');
+  summary.textContent = '摘要';
+  var body = document.createElement('div');
+  body.className = 'cr-recap-text';
+  body.textContent = m.recap;
+  details.append(summary, body);
+  bubble.appendChild(details);
 }
 var DRAMA_SUM_RAW_MAX = 40000;   // 总结全文时最多读多少字的原文（更早的用摘要）
 function dramaSumList(idx) { return getDramaHistory(idx).filter(function(m) { return !m.action; }); }
