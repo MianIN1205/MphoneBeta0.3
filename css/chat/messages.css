@@ -243,6 +243,7 @@
   max-height: 320px;
   opacity: 1;
   padding-top: 4px;
+  padding-bottom: 3px; /* 给转写编辑框的焦点描边留出空间 */
 }
 .voice-transcript-card {
   position: relative; max-width: 82%; min-width: 96px;
