@@ -58,8 +58,9 @@ crSendBtn.addEventListener('click', function(e) {
   crInput.focus();
 });
 
-function sendCrDraft() {
+function sendCrDraft(allowQuoteOnly) {
   var text = crInput.value.trim();
+  if (!text && allowQuoteOnly && pendingQuote && pendingQuote.ref) text = '再看一下这条记录。';
   if (!text || openingChatCharIdx === -1) return;
   appendUserMsg(text);
   crInput.value = '';
@@ -81,6 +82,6 @@ document.querySelector('.cr-emoji-btn').addEventListener('click', function(e) {
   e.stopPropagation();
   if (genHere()) { stopGenerating(); return; }
   if (openingChatCharIdx === -1) return;
-  sendCrDraft();
+  sendCrDraft(true);
   sendMsg('', true);
 });

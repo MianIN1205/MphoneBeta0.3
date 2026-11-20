@@ -254,8 +254,13 @@ function mcpCallFromLLM(name, args, scope, onResult) {
       var params = Object.keys(args || {}).length ? JSON.stringify(args, function(key, value) {
         return /token|secret|password|authorization|cookie|credential|api[_-]?key/i.test(key) ? '***' : value;
       }, 2) : '';
-      onResult({ tool: preview(tool, 100), provider: preview(provider, 80), state: state,
-        params: preview(params, 700), result: preview(text, 1200) });
+      var item = { tool: preview(tool, 100), provider: preview(provider, 80), state: state,
+        params: preview(params, 700), result: preview(text, 1200) };
+      if (state === 'done') {
+        item.resultLimited = String(text || '').length > 6000;
+        if (String(text || '').length > 1200) item.savedResult = preview(text, 6000);
+      }
+      onResult(item);
     }
     return text;
   }

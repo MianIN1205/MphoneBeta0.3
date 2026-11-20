@@ -14,77 +14,131 @@ var ERROR_TABLE = [
     reasons: ['模型返回了空白：有的模型遇到它不想回答的内容会直接不说话', '回复被平台的安全过滤拦掉了，只剩一个空壳', '「最大输出长度」太小，或者会思考的模型把字数都用在了思考上', '中转站不稳定，只回了一个空包'],
     fixes: ['点 ❄️ 再试一次', '换个说法，或者在便捷拓展栏换个模型试试', '检查预设里有没有把输出长度限制得太小'] },
 
-  { id: 'refusal', test: function(e) { return /拒绝回答|refus|safety|content.?filter|content_policy|blocked|prohibited|harm/.test(e.msg); },
+  { id: 'refusal', test: function(e) { return /安全策略拒绝|内容审核|内容安全|safety.?filter|content.?filter|content.?policy|policy.?violation|model.?refusal|blocked.?by.?safety/.test(e.msg); },
     title: '被模型的安全规则拦下了',
     reasons: ['这一轮的内容（或者最近的聊天记录、人设、世界书里的某段）触发了模型的安全审查', '不同模型、不同中转站的尺度不一样'],
     fixes: ['换个说法再试', '换一个尺度更宽的模型', '检查人设、预设、世界书里有没有特别容易触发审查的内容'] },
 
-  { id: 'context', test: function(e) { return /context|maximum.*tokens|too many tokens|token.?limit|max_tokens|prompt is too long|input is too long|reduce the length/.test(e.msg); },
+  { id: 'context', test: function(e) { return /context.?length|context.?window|context.?limit|too many input tokens|prompt (is )?too long|input (is )?too long|输入.{0,8}过长|上下文.{0,12}(?:过长|超出|超过|上限)/.test(e.msg); },
     title: '聊天记录太长了',
     reasons: ['这次发过去的内容（人设 + 预设 + 世界书 + 记忆 + 聊天记录）超过了这个模型一次能读的长度', '最近发了很多图片，或者世界书、预设特别长'],
     fixes: ['角色设置 → 聊天 → 把「上下文上限」或「最大记忆范围」调小一点', '换一个能读更长内容的模型', '打开「自动总结」，让旧聊天变成简短的记忆'] },
 
-  { id: 'auth', test: function(e) { return e.status === 401 || /invalid.*(api.?key|token)|incorrect api key|unauthori[sz]ed|authentication|api key not valid|无效的令牌|令牌/.test(e.msg); },
+  { id: 'auth', test: function(e) { return e.status === 401 || /invalid[_ ](?:api.?key|auth.?token|access.?token|token)|incorrect api key|unauthori[sz]ed|authentication.?error|api key not valid|(?:无效|过期|错误).{0,4}(?:密钥|令牌)/.test(e.msg); },
     title: '密钥不对',
     reasons: ['密钥填错了、少复制了几位，或者前后多了空格', '密钥已经过期、被删掉或者被禁用了', '密钥和接口地址不是同一家的（比如用 A 中转的密钥连 B 中转）'],
     fixes: ['回到 设置 → 主API，重新复制粘贴一次密钥，点「当前应用」', '去中转站或官网后台看看这个密钥还在不在'] },
 
-  { id: 'money', test: function(e) { return e.status === 402 || /insufficient|quota|balance|credit|billing|余额|额度|欠费/.test(e.msg); },
+  { id: 'money', test: function(e) { return e.status === 402 || /insufficient.{0,20}(?:quota|balance|credits|funds)|(?:quota|credits|balance).{0,12}(?:exhausted|insufficient)|billing.{0,12}(?:hard.limit|disabled)|余额不足|额度不足|欠费/.test(e.msg); },
     title: '余额或额度用完了',
     reasons: ['账户余额不够了', '这个密钥设了额度上限，已经用完', '免费额度用完了'],
     fixes: ['去中转站或官网后台充值，或者调高这个密钥的额度', '先换一个有余额的 API 预设用着'] },
 
-  { id: 'forbidden', test: function(e) { return e.status === 403 || /forbidden|permission|not allowed|unsupported.?(country|region)|region|地区/.test(e.msg); },
-    title: '没有权限，或者地区不支持',
-    reasons: ['这个密钥没有用这个模型的权限', '服务商不支持你所在的地区（VPN 节点所在地也算）', '中转站把这个请求拦下了'],
-    fixes: ['换一个模型试试', '换一个 VPN 节点', '问问中转站这个模型能不能用'] },
+  { id: 'region', test: function(e) { return e.status === 451 || /(?:unsupported|not.supported|unavailable).{0,26}(?:country|region|territory)|(?:country|region|territory).{0,24}(?:not.supported|restricted|unavailable)|地区(?:不可用|不支持|受限)/.test(e.msg); },
+    title: '地区访问受限',
+    reasons: ['服务返回了地区或法律限制的明确提示。'],
+    fixes: ['核对当前出口地区和服务商支持的地区。'] },
+  { id: 'model', test: function(e) { return /model.?not.?found|(?:unknown|invalid|no such) model|model.{0,80}(?:does not exist|not found|not available)|模型(?:不存在|不可用|已下线)/.test(e.msg); },
+    title: '模型不可用',
+    reasons: ['接口指明找不到这个模型，或当前密钥所在分组无法使用它。'],
+    fixes: ['重新拉取模型列表，核对模型 ID 和分组权限。'] },
+  { id: 'forbidden', test: function(e) { return e.status === 403 || /permission.?denied|access.?denied|forbidden/.test(e.msg); },
+    title: '请求被拒绝',
+    reasons: ['接口拒绝了这次请求，可能涉及模型权限、账号分组或服务端的访问限制。'],
+    fixes: ['核对密钥对应的分组和模型权限。', '如果偶尔才出现，向服务商提供发生时间和报错原文。'] },
 
-  { id: 'notfound', test: function(e) { return e.status === 404 || /not.?found|does not exist|no such model|model_not_found|unknown model|invalid model/.test(e.msg); },
+  { id: 'notfound', test: function(e) { return e.status === 404 || /(?:route|endpoint|path).{0,28}not.found/.test(e.msg); },
     title: '地址或模型名不对',
     reasons: ['接口地址少了 /v1 之类的后缀，或者多写了一段', '模型名写错了，或者这个模型已经下线', '这个中转站没有这个模型'],
     fixes: ['设置 → 主API，对照中转站给的地址重新填一次（一般以 /v1 结尾）', '点刷新按钮重新拉一次模型列表，从列表里选'] },
 
-  { id: 'toolarge', test: function(e) { return e.status === 413 || /too large|payload|entity too large|request size/.test(e.msg); },
+  { id: 'toolarge', test: function(e) { return e.status === 413 || /(?:payload|entity|request|image|audio).{0,16}too large|request size exceeded/.test(e.msg); },
     title: '发送的内容太大了',
     reasons: ['最近发的图片、语音太大，或者太多', '聊天记录特别长'],
     fixes: ['少发几张图，或者发小一点的图', '角色设置 → 聊天 → 把「上下文上限」调小一点', '设置里关掉「发送真实图片」，让图片只用文字说明'] },
 
-  { id: 'ratelimit', test: function(e) { return e.status === 429 || /rate.?limit|too many requests|频繁|并发/.test(e.msg); },
+  { id: 'rateTokens', test: function(e) { return /tokens per minute|token.?rate.?limit|\btpm\b|每分钟.{0,8}token/.test(e.msg); },
+    title: '令牌速率限流',
+    reasons: ['服务限制的是一段时间内处理的 Token 数，长上下文可能一次就占掉很多。'],
+    fixes: ['稍等一会再发，或缩小本轮上下文和附件。'] },
+  { id: 'ratelimit', test: function(e) { return e.status === 429 || /rate.?limit|too many requests|resource.?exhausted|请求过于频繁|并发上限/.test(e.msg); },
     title: '请求太频繁了',
     reasons: ['短时间里请求次数太多（自动消息、动态、总结、日记也会占次数）', '这个密钥或中转站限制了每分钟的次数'],
     fixes: ['等一两分钟再点 ❄️', '暂时关掉一些角色的自主活动，减少后台请求', '换一个 API 预设分担一下'] },
 
-  { id: 'timeout', test: function(e) { return e.status === 408 || e.status === 504 || e.status === 524 || /time.?out|timed out|超时/.test(e.msg); },
+  { id: 'gatewayTimeout', test: function(e) { return [504, 522, 524].includes(e.status); },
+    title: '上游连接或响应超时',
+    reasons: ['网关报告它没能及时连到上游，或没等到上游完成响应。'],
+    fixes: ['过一会重试。', '若短消息稳定、长回复易失败，试着缩小上下文或换响应更快的模型。'] },
+  { id: 'timeout', test: function(e) { return e.status === 408 || /time.?out|timed out|超时/.test(e.msg); },
     title: '等太久，超时了',
     reasons: ['模型想得太久（长回复、会思考的模型更容易）', '中转站或网络太慢', '手机切到后台时连接被掐断了'],
     fixes: ['点 ❄️ 再试一次', '回复的时候先别切出去', '换一个快一点的模型或中转'] },
 
-  { id: 'server', test: function(e) { return [500, 502, 503, 520, 521, 522, 529].indexOf(e.status) >= 0 || /bad gateway|service unavailable|internal server error|overloaded|server error|upstream/.test(e.msg); },
-    title: '服务器那边出问题了',
-    reasons: ['模型服务商或中转站暂时出故障了，或者太忙', '这不是你这边的问题'],
+  { id: 'overloaded', test: function(e) { return e.status === 529 || /overloaded|server.?busy|service.?overload|服务繁忙/.test(e.msg); },
+    title: '服务繁忙',
+    reasons: ['服务明确返回了过载或繁忙，可能只影响一部分请求。'],
+    fixes: ['等一会再试。', '同一模型持续繁忙时，可以先切换预设。'] },
+  { id: 'server', test: function(e) { return e.status >= 500 || /bad gateway|service unavailable|internal server error|server error|upstream.?error/.test(e.msg); },
+    title: '接口服务异常',
+    reasons: ['接口或网关返回了服务端错误，具体是中转还是它的上游，需要结合错误原文或服务商日志。'],
     fixes: ['过一会儿再点 ❄️', '先换一个 API 预设或模型用着', '一直这样的话，去中转站的公告或群里看看'] },
 
-  { id: 'network', test: function(e) { return /failed to fetch|networkerror|network error|load failed|network request failed|连接失败|err_/.test(e.msg); },
-    title: '连不上服务器',
-    reasons: ['手机网络或 VPN 断了、正在切换', '接口地址写错了：少了 https://、多了空格、域名拼错', '中转站挂了，或者在你的网络环境下访问不了', '这个接口不允许网页直接访问（跨域限制）：别的 App 能用，不代表网页里能用', '手机切到后台时把连接断了'],
-    fixes: ['检查网络和 VPN，换个节点试试', '设置 → 主API，点刷新按钮拉一次模型列表：拉不到就说明这个地址连不上', '核对接口地址，必要时换一个中转站'] },
+  { id: 'delivery', test: function(e) { return e.phase === 'response' && e.name !== 'syntaxerror'; },
+    title: '回复接收中断',
+    reasons: ['网页已经收到接口响应，但读取正文时连接中断。可能涉及网络切换、后台暂停或中转提前关闭连接。'],
+    fixes: ['留在聊天页重试一条短消息。', '经常中断时，把失败时间和原文给服务商排查流式连接。'] },
+  { id: 'cors', test: function(e) { return !e.status && /cross-origin|\bcors\b|preflight|access-control-allow-origin/.test(e.msg); },
+    title: '网页跨域访问被拦截',
+    reasons: ['错误明确提到了跨域或预检。接口需要允许小手机这个网页来源访问。'],
+    fixes: ['请接口服务商核对跨域配置，尤其是预检和错误响应。'] },
+  { id: 'dns', test: function(e) { return !e.status && /err_name_not_resolved|enotfound|dns_probe|name resolution/.test(e.msg); },
+    title: '接口域名解析失败',
+    reasons: ['网络没有把接口域名解析成可连接的地址。'],
+    fixes: ['核对域名拼写，检查当前网络或 VPN 的 DNS。'] },
+  { id: 'tls', test: function(e) { return !e.status && /err_cert_|err_ssl_|certificate|tls handshake/.test(e.msg); },
+    title: '接口证书或握手异常',
+    reasons: ['浏览器报告 HTTPS 校验或加密连接握手失败。'],
+    fixes: ['检查设备日期时间，并请接口服务商核对证书。'] },
+  { id: 'offline', test: function(e) { return !e.status && (e.offline || /err_internet_disconnected/.test(e.msg)); },
+    title: '设备网络离线',
+    reasons: ['报错时浏览器报告设备处于离线状态。'],
+    fixes: ['等手机网络恢复，再回到聊天页发送。'] },
+  { id: 'network', test: function(e) { return !e.status && /failed to fetch|networkerror|network error|load failed|network request failed|连接失败|err_(?:connection|network|address)/.test(e.msg); },
+    title: '没有收到可读取的接口响应',
+    reasons: ['浏览器只报告了连接失败，没有提供 HTTP 状态。仅凭这条报错，无法区分网络波动、代理断开、服务端断连和跨域拦截。'],
+    fixes: ['同一预设先发一条短消息。模型列表能加载时，聊天请求仍可能单独失败。', '如果重现，记下时间和详情里的原文，请中转查这一笔。'] },
 
-  { id: 'format', test: function(e) { return /unexpected token|json|not valid|<!doctype|<html/.test(e.msg); },
+  { id: 'format', test: function(e) { return e.name === 'syntaxerror' || /响应是 html|unexpected token|invalid json|<!doctype|<html/.test(e.msg); },
     title: '返回的不是正常的数据',
     reasons: ['接口地址可能填成了网页地址，而不是 API 地址', '这个地址不是 OpenAI 兼容格式的接口', '中转站出错，返回了一个错误网页'],
     fixes: ['对照中转站的说明，重新填一次 API 地址（一般以 /v1 结尾）', '过一会儿再试'] },
 
-  { id: 'badreq', test: function(e) { return e.status === 400 || /invalid|bad request|unsupported|not support/.test(e.msg); },
+  { id: 'capability', test: function(e) { return /(?:image|audio|vision|tools?|function.call|multimodal|图片|音频|工具).{0,35}(?:not.support|unsupported|不支持)|(?:not.support|unsupported|不支持).{0,40}(?:image|audio|vision|tool|function.call|multimodal|图片|音频|工具)/.test(e.msg); },
+    title: '接口不支持本轮能力',
+    reasons: ['接口明确拒绝了本轮用到的图片、音频、工具或其他输入能力。'],
+    fixes: ['换支持该能力的模型或接口，或把这轮改成普通文字。'] },
+  { id: 'badreq', test: function(e) { return [400, 405, 409, 415, 422].includes(e.status) || /invalid.request|invalid.parameter|bad request|unsupported|not support/.test(e.msg); },
     title: '请求格式不被接受',
     reasons: ['这个模型不支持图片、语音或者工具（MCP），而这次发过去了', '某个参数这个模型不认（比如温度超出范围）', '中转站和这个模型的格式不兼容'],
-    fixes: ['设置里关掉「发送真实图片」、语音发送改成「转成文字」再试', '暂时关掉 MCP 工具', '换一个模型试试'] },
+    fixes: ['按原始错误检查被点名的模型或预设参数。', '用同一预设发一条短文字，确认是否只在特定内容下失败。'] },
 ];
 var ERROR_FALLBACK = { id: 'other', title: '出了点问题',
   reasons: ['对照表里没有对上这种情况，可以看下面的原始报错'],
   fixes: ['点 ❄️ 再试一次', '把原始报错复制下来发给 Claude，帮你看看'] };
 
 function explainError(err) {
-  var info = { msg: String((err && err.message) || err || '').toLowerCase(), status: (err && err.status) || 0 };
+  err = err || {};
+  var structured = '';
+  if (err.body) {
+    try {
+      var data = JSON.parse(err.body);
+      var detail = data && (data.error || data);
+      if (detail && typeof detail === 'object') structured = [detail.code, detail.type, detail.status].join(' ');
+    } catch (_) {}
+  }
+  var info = { msg: (structured + ' ' + String(err.message || err)).toLowerCase(), status: Number(err.status) || 0,
+    phase: err.phase, offline: err.offline, name: String(err.name || '').toLowerCase() };
   for (var i = 0; i < ERROR_TABLE.length; i++) if (ERROR_TABLE[i].test(info)) return ERROR_TABLE[i];
   return ERROR_FALLBACK;
 }
@@ -103,6 +157,8 @@ function errPack(err, ctx) {
   err = err || {}; ctx = ctx || {};
   var o = { message: errRedact(String(err.message || err || '')), time: Date.now() };
   if (err.status) o.status = err.status;
+  if (err.phase) o.phase = err.phase;
+  if (err.offline || navigator.onLine === false) o.offline = true;
   if (err.statusText) o.statusText = String(err.statusText);
   if (err.name && err.name !== 'Error') o.name = String(err.name);
   try { if (err.url) { var eu = new URL(err.url); o.url = eu.origin + eu.pathname; } } catch (_) {}
@@ -131,7 +187,10 @@ var ERR_SHORT_BY_KIND = {
   noapi: '未配置 API', empty: '空回复', refusal: '内容受限', context: '上下文过长',
   auth: '认证失败', money: '额度不足', forbidden: '权限受限', notfound: '接口或模型不存在',
   toolarge: '请求过大', ratelimit: '请求限流', timeout: '请求超时', server: '服务异常',
-  network: '网络错误', format: '响应格式错误', badreq: '请求无效'
+  network: '网络连接失败', delivery: '回复接收中断', cors: '跨域受限', offline: '设备离线',
+  dns: '域名解析失败', tls: '证书或握手异常', format: '响应格式错误', badreq: '请求无效',
+  region: '地区受限', model: '模型不可用', capability: '能力不支持', rateTokens: 'Token 速率限流',
+  gatewayTimeout: '网关超时', overloaded: '服务繁忙'
 };
 var ERR_SHORT_BY_HTTP = {
   400: '请求无效', 401: '认证失败', 402: '额度不足', 403: '权限受限', 404: '接口或模型不存在',
@@ -143,7 +202,7 @@ var ERR_SHORT_BY_HTTP = {
 function errShortLabel(err, ex) {
   var status = Number(err.status);
   var hasStatus = Number.isInteger(status) && status >= 400 && status <= 599;
-  var specific = ['context', 'refusal', 'money'].indexOf(ex.id) >= 0;
+  var specific = ['context', 'refusal', 'money', 'region', 'model', 'capability', 'rateTokens', 'overloaded'].includes(ex.id);
   var label = (specific && ERR_SHORT_BY_KIND[ex.id]) ||
     (hasStatus && ERR_SHORT_BY_HTTP[status]) || ERR_SHORT_BY_KIND[ex.id];
   return hasStatus ? status + ' · ' + (label || (status >= 500 ? '服务异常' : '请求失败')) : label || '未知错误';

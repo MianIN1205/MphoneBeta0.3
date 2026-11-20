@@ -51,6 +51,12 @@ function partsText(content) {
 }
 
 // 整理消息：去空消息、换掉不支持的媒体、按接口要求合并
+function voiceTextForAI(transcript, status) {
+  if (!transcript) return '（没有收到音频，也没有可用的转写）';
+  var label = status === 'partial' ? '部分转写' : '转写';
+  return '（仅收到语音' + label + '，没有听到录音，请按文字理解）：' + transcript;
+}
+
 function llmPrepare(msgs, cfg, caps) {
   var out = [];
   JSON.parse(JSON.stringify(msgs)).forEach(function(m) {
@@ -58,8 +64,7 @@ function llmPrepare(msgs, cfg, caps) {
     if (Array.isArray(c)) {
       c = c.map(function(p) {
         if (p.type === 'image_url' && !caps.image) return { type: 'text', text: '[图片：当前模型看不到图片内容]' };
-        // 模型听不到音频：有转写就换成转写文字，没有就去掉（前面的文字部分已经写了「[语音消息]」）
-        if (p.type === 'input_audio' && !caps.audio) return p._transcript ? { type: 'text', text: '（这条语音说的是：' + p._transcript + '）' } : null;
+        if (p.type === 'input_audio' && !caps.audio) return { type: 'text', text: voiceTextForAI(p._transcript, p._transcriptStatus) };
         return p;
       }).filter(Boolean);
       if (c.every(function(p) { return p.type === 'text'; })) c = partsText(c);
@@ -150,12 +155,26 @@ function llmTextFromJson(j, provider) {
   return Array.isArray(c) ? partsText(c) : String(c || '');
 }
 
+function llmProviderError(detail) {
+  var err = new Error(detail.message || (typeof detail === 'string' ? detail : JSON.stringify(detail)));
+  err.body = JSON.stringify({ error: detail });
+  return err;
+}
+
+function readReplyBody(promise) {
+  return promise.catch(function(err) {
+    if (err && err.name !== 'AbortError') err.phase = 'response';
+    throw err;
+  });
+}
+
 // 读回复：流式逐段回调 onText(目前为止的全文)；接口没按流式返回时也能读
 function llmRead(res, provider, onText) {
   var ct = res.headers.get('content-type') || '';
+  if (/text\/html/i.test(ct)) return Promise.reject(new Error('接口响应是 HTML 页面'));
   if (!res.body || (ct.indexOf('event-stream') < 0 && ct.indexOf('json') >= 0)) {
-    return res.json().then(function(j) {
-      if (j && j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+    return readReplyBody(res.json()).then(function(j) {
+      if (j && j.error) throw llmProviderError(j.error);
       var t = llmTextFromJson(j, provider);
       if (onText && t) onText(t);
       return t;
@@ -169,7 +188,7 @@ function llmRead(res, provider, onText) {
     if (!data || data === '[DONE]') return;
     var j;
     try { j = JSON.parse(data); } catch (_) { return; }
-    if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+    if (j.error) throw llmProviderError(j.error);
     var piece = '';
     if (provider === 'anthropic') {
       if (j.type === 'content_block_delta' && j.delta && j.delta.type === 'text_delta') piece = j.delta.text || '';
@@ -181,7 +200,7 @@ function llmRead(res, provider, onText) {
     if (piece) { text += piece; if (onText) onText(text); }
   }
   function pump() {
-    return reader.read().then(function(r) {
+    return readReplyBody(reader.read()).then(function(r) {
       if (r.done) {
         if (buf) handle(buf);
         if (!text && refused) throw new Error('模型按安全策略拒绝回答了这个请求');
@@ -226,9 +245,9 @@ function llmToolChat(msgs, opts) {
       if (opts.signal && opts.signal.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
       return fetch(base.url, Object.assign({}, base.init, { body: JSON.stringify(body) })).then(function(res) {
         if (!res.ok) return apiError(res);
-        return res.json();
+        return readReplyBody(res.json());
       }).then(function(j) {
-        if (j && j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+        if (j && j.error) throw llmProviderError(j.error);
         var calls = [];
         if (provider === 'anthropic') {
           (j.content || []).forEach(function(b) { if (b.type === 'tool_use') calls.push({ id: b.id, name: b.name, args: b.input || {} }); });

@@ -8,18 +8,19 @@ function charKey(idx) { return charList[idx] ? charList[idx].id : '_none'; }
 function getChatHistory(idx) { var k = charKey(idx); if (!chatHistories[k]) chatHistories[k] = []; return chatHistories[k]; }
 function getDramaHistory(idx) { var k = charKey(idx); if (!dramaHistories[k]) dramaHistories[k] = []; return dramaHistories[k]; }
 // 一条消息要保存的字段；alts 是「重新生成」留下的多个版本（每个版本是一组消息）
-function stripMsg(m) {
+function stripMsg(m, skipAlts) {
   var o = { role: m.role, content: m.content, imgSrc: m.imgSrc, images: m.images, sticker: m.sticker, status: m.status, statusHtml: m.statusHtml, statusLined: m.statusLined, time: m.time,
             quote: m.quote, recalled: m.recalled, recalledText: m.recalledText, recalledBy: m.recalledBy,
             voice: m.voice, transcript: m.transcript, action: m.action, recap: m.recap, pat: m.pat, patSuffix: m.patSuffix, cal: m.cal,
             narr: m.narr, note: m.note, noteAI: m.noteAI, think: m.think, errs: m.errs, errTrail: m.errTrail, mcpRuns: m.mcpRuns, mcpLead: m.mcpLead, autoPrevAt: m.autoPrevAt, file: m.file, textImg: m.textImg, photo: m.photo, illus: m.illus, tg: m.tg, speaker: m.speaker, play: m.play, whisperChat: m.whisperChat, privateCard: m.privateCard };
-  if (m.alts) {
+  if (m.alts && !skipAlts) {
     o.alts = m.alts.map(function(group) {
-      return group.map(function(g) { return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, action: g.action, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, errTrail: g.errTrail, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns, autoPrevAt: g.autoPrevAt, speaker: g.speaker,
-                                              recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy }; });
+      return group.map(function(g) { return stripMsg(g, true); });
     });
     o.altIdx = m.altIdx;
   }
+  if (m.historyRef) o.historyRef = m.historyRef;
+  if (m.photoNotes) o.photoNotes = m.photoNotes;
   return o;
 }
 function saveHistories() {
@@ -27,7 +28,7 @@ function saveHistories() {
   var strip = function(all) {
     var out = {};
     Object.keys(all).forEach(function(k) {
-      out[k] = all[k].map(stripMsg);
+      out[k] = all[k].map(function(m) { return stripMsg(m); });
     });
     return out;
   };

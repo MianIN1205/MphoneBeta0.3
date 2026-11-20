@@ -8,11 +8,17 @@ var imgViewerImg = document.getElementById('imgViewerImg');
 var ivState = { src: '', source: '', author: '', scale: 1, x: 0, y: 0, photos: [], index: 0 };
 var ivCount = document.getElementById('imgViewerCount');
 var ivStickerName = document.getElementById('imgViewerStickerName');
+var ivNotes = document.getElementById('imgViewerNotes');
+var ivNotesText = document.getElementById('imgViewerNotesText');
 function ivShowPhoto() {
   ivState.src = ivState.photos[ivState.index];
   imgViewerImg.src = ivState.src;
   ivCount.hidden = ivState.photos.length < 2;
   ivCount.textContent = (ivState.index + 1) + ' / ' + ivState.photos.length;
+  var note = ivState.notes[ivState.index];
+  ivNotes.hidden = !note;
+  if (!note) ivNotes.open = false;
+  ivNotesText.textContent = note ? '画面 · ' + note.scene + (note.detail ? '\n他留意到 · ' + note.detail : '') : '';
   ivReset();
 }
 function ivStep(delta) {
@@ -35,6 +41,8 @@ function openImgViewer(src, info) {
   clearTimeout(ivTapTimer);
   ivLastTap = 0;
   ivState.photos = Array.isArray(info.photos) && info.photos.length ? info.photos : [src];
+  ivState.notes = info.notes || [];
+  ivNotes.open = false;
   ivState.index = Math.max(0, Math.min(ivState.photos.length - 1, info.index || 0));
   ivState.source = info.source || '';
   ivState.author = info.author || '';
@@ -84,7 +92,13 @@ function ivChatPhotos(image) {
   for (var candidate = first; usable(candidate); candidate = adjacent(candidate, 'nextElementSibling')) {
     candidate.querySelectorAll(selector).forEach(function(el) { if (el.src) images.push(el); });
   }
-  return { photos: images.map(function(el) { return el.src; }), index: images.indexOf(image) };
+  var notes = images.map(function(el) {
+    var owner = el.closest('.chat-msg-row')._msg;
+    var bubble = el.closest('.img-bubble');
+    var position = Array.from(bubble.querySelectorAll('img')).indexOf(el);
+    return owner && owner.photoNotes && owner.photoNotes[position];
+  });
+  return { photos: images.map(function(el) { return el.src; }), index: images.indexOf(image), notes: notes };
 }
 
 // 打开入口（捕获阶段；长按弹出菜单后松手的那次点击不打开）
@@ -116,7 +130,7 @@ function ivDist() {
   return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
 }
 imgViewer.addEventListener('pointerdown', function(e) {
-  if (e.target.closest('.img-viewer-bar, #imgViewerClose')) return;
+  if (e.target.closest('.img-viewer-bar, .img-viewer-notes, #imgViewerClose')) return;
   imgViewer.setPointerCapture(e.pointerId);
   ivPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
   var n = Object.keys(ivPointers).length;

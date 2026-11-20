@@ -393,7 +393,7 @@ var WB_WRAP = '【背景设定】下面是这个世界、地点、人物和事�
 // 世界书里标成「写法要求」的条目：是要照着做的规矩，不是背景，单独一段放在聊天记录后面
 var WB_RULE_WRAP = '【写法要求】下面几条是这次回复要照着做的写法要求，和回复格式一起遵守。照做就好，不要在回复里提到这些要求。';
 
-function buildMsgs(idx, histOverride) {
+function buildMsgs(idx, histOverride, historySession) {
   var char = charList[idx] || {};
   if (char.isGroup && typeof buildGroupMsgs === 'function') return buildGroupMsgs(char, histOverride || getActiveHistory(idx));   // 群聊（js/chat/group.js）
   var sys  = (document.getElementById('systemPromptTA') ? document.getElementById('systemPromptTA').value.trim() : '');
@@ -503,7 +503,7 @@ function buildMsgs(idx, histOverride) {
 
 
   var rawHist = history.map(function(m, i) {
-    var c = msgContentForAI(m, i >= richFrom, char);
+    var c = historyVoicePrompt(historyPhotoPrompt(msgContentForAI(m, i >= richFrom, char), m, historySession), m, historySession);
     // 聊天窗口：以前存下的没标点的气泡补个句号再给 TA 看，免得 TA 学着不写标点（小手机靠标点分气泡）
     if (!isDrama && m.role === 'assistant' && typeof c === 'string' && /[\u4e00-\u9fffA-Za-z0-9]$/.test(c)) c += '。';
     return { role: m.role, content: c };
@@ -546,13 +546,14 @@ function msgTextForAI(m) {
   if (m.whisperChat && typeof whisperTextForAI === 'function') return whisperTextForAI(m);   // 群里的悄悄话   // 群里的投票 / 抽奖 / 红包
   var c = (m.file && typeof fileTextForAI === 'function') ? fileTextForAI(m)
         : m.textImg ? (m.illus ? '（这一幕的配图）' : m.role === 'assistant' ? '[你发了一张照片：' + m.textImg + ']' : '[发来一张照片（用文字描述的画面）：' + m.textImg + ']')
-        : m.voice ? ('[语音消息]' + (m.transcript ? '：' + m.transcript : '')) : (m.content || (m.imgSrc ? '[图片消息]' : ''));
+        : m.voice ? ('[语音消息]' + voiceTextForAI(m.transcript, m.voice.transcriptStatus))
+        : (m.content || (m.imgSrc ? '[图片消息]' : '')) + (m.photoNotes ? '\n看图记录：' + historyPhotoText(m) : '');
   if (m.quote) c = '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' + c;
   return c;
 }
 
 // 发给 AI 的消息内容。rich = 是否附带真实媒体（只对注意力范围内的用户消息）：
-// 图片 → 识图格式的真实图片；语音 →「发送音频」模式下附带录音（发送前转成 WAV），否则用转写文字
+// 图片和录音交给支持对应媒体的模型，语音转写作为音频不可用时的替代内容。
 function msgContentForAI(m, rich, char) {
   var text = msgTextForAI(m);
   if (!rich || m.role !== 'user' || m.recalled) return text;
@@ -570,11 +571,9 @@ function msgContentForAI(m, rich, char) {
     });
     return parts;
   }
-  // 「发送音频」模式，或「转成文字」但还没转出文字（比如接口不支持语音识别）时，直接把录音发过去：
-  // 文字部分不带转写，让能听的模型自己听；转写放在音频块上，模型听不了时（js/core/llm.js 的 llmPrepare）换成转写文字
-  if (m.voice && m.voice.src && (mediaCfg.voiceMode === 'audio' || !m.transcript)) {   // 打字发的语音没有录音，只给文字
-    var head = msgTextForAI(Object.assign({}, m, { transcript: '' }));
-    return [{ type: 'text', text: head }, { type: 'input_audio', _voiceSrc: m.voice.src, _transcript: m.transcript || '' }];
+  if (m.voice && m.voice.src) {
+    var head = (m.quote ? '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' : '') + '[语音消息]';
+    return [{ type: 'text', text: head }, { type: 'input_audio', _voiceSrc: m.voice.src, _transcript: m.transcript || '', _transcriptStatus: m.voice.transcriptStatus }];
   }
   return text;
 }

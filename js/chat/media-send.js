@@ -24,7 +24,7 @@ document.getElementById('mediaVision').addEventListener('change', function() {
 document.getElementById('mediaLiveStt').addEventListener('change', function() {
   mediaCfg.liveStt = this.checked;
   mphoneStore.save('mphone_media_cfg', mediaCfg);
-  if (this.checked && !(window.SpeechRecognition || window.webkitSpeechRecognition)) showToast('这个浏览器好像没有自带的语音识别，会继续用语音识别接口', 'plain');
+  if (this.checked && !(window.SpeechRecognition || window.webkitSpeechRecognition)) showToast('这个浏览器不支持录音时转写，语音仍可播放', 'plain');
 });
 document.querySelectorAll('#mediaVoiceRow .pf-radio-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
@@ -159,7 +159,7 @@ function resolveMediaParts(msgs) {
       jobs.push(voiceToWavBase64(part._voiceSrc).then(function(b64) {
         msg.content[i] = { type: 'input_audio', input_audio: { data: b64, format: 'wav' } };
       }, function() {
-        msg.content[i] = { type: 'text', text: part._transcript ? '（这条语音说的是：' + part._transcript + '）' : '（这段语音无法转换格式）' };
+        msg.content[i] = { type: 'text', text: voiceTextForAI(part._transcript, part._transcriptStatus) };
       }));
     });
   });

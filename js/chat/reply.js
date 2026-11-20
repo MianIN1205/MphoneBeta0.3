@@ -22,6 +22,7 @@ var REPLY_TAGS = [
   { names: ['签名'] },
   { names: ['个性签名'] },
   { names: ['照片', '配图'] },
+  { names: ['看图记录', '语音记录', '回查记录'] },
   { names: ['前情'] },
   { names: ['文件'] },
   { names: ['日程', '提醒', '闹钟'] },
@@ -354,6 +355,8 @@ function sendMsg(userText, requestOnly, onDone) {
   var toolRun = { entries: [] }, toolDots = typing.bubble.firstChild;
   var toolAnchor = hist[hist.length - 1];
   var generation = genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
+  var capabilities = llmCaps(cfg);
+  var historySession = { canSee: !!(mediaCfg.vision && capabilities.image), canHear: capabilities.audio, photos: [], voices: [] };
   syncGenBtn();
   // 这个角色的聊天室开着（不管在看聊天还是剧情）就画进对应的列表；切去别的角色时不碰那边的列表
   function roomOpen() { return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === replyChar; }
@@ -405,6 +408,10 @@ function sendMsg(userText, requestOnly, onDone) {
     var list = showing ? document.getElementById(listId) : null;
     if (showing && typeof crMarkOtherView === 'function') crMarkOtherView(isChatView);
     if (showing && !isChatView && currentCrSubView === 'contacts' && typeof crDramaSeen === 'function') crDramaSeen(replyChar);
+    historySession.canSee = historySession.canSee && llmCaps(cfg).image;
+    text = saveHistoryPhotoNotes(text, historySession, hist).replace(/<回查记录>[\s\S]*?(<\/回查记录>|$)/g, '').trim();
+    historySession.canHear = historySession.canHear && llmCaps(cfg).audio;
+    text = saveHistoryVoiceNotes(text, historySession, hist);
     if (!isGrp) text = replyTakeTags(replyChar, text);   // 改密码、星星、待关心、记下持有…（见上面的标签表）
     var mark = list ? list.lastChild : null;
     var lead = !toolAnchor && toolRun.entries.length ? toolRun : null;
@@ -496,19 +503,37 @@ function sendMsg(userText, requestOnly, onDone) {
   // 开了 MCP 时把工具交给模型；用工具的过程显示在打字气泡里
   var mcpTools = (!isGrp && typeof mcpActiveTools === 'function') ? mcpActiveTools() : [];
   // 开了向量记忆时先算好这次对话的向量（失败就用本地相似度）
-  (!isGrp && typeof memPrepare === 'function' ? memPrepare(replyChar, hist) : Promise.resolve()).then(function() {
+  Promise.resolve(pendingVoiceMessages.get(hist)).then(function() {
+    if (ctrl.signal.aborted) throw new DOMException('已停止', 'AbortError');
+    toolAnchor = hist[hist.length - 1];
+    return !isGrp && typeof memPrepare === 'function' ? memPrepare(replyChar, hist) : null;
+  }).then(function() {
     if (typeof cotModeFor === 'function') cfg.cot = cotModeFor(replyChar, !isChatView);   // 这个角色这个窗口的思考方式（llm.js 的 llmThinkOff 看它）
     // 群聊开了「成员各用自己的模型」：一个个人单独问一遍，拼成一段再按「名字：」拆（js/chat/group.js）
     if (isGrp && typeof groupSoloOn === 'function' && groupSoloOn(replyChar)) return groupSoloText(replyChar, hist, ctrl.signal);
-    var msgs = buildMsgs(replyCharIdx);
+    var msgs = buildMsgs(replyCharIdx, hist, historySession);
+    var currentTurn = [];
+    for (var i = hist.length - 1; i >= 0 && hist[i].role === 'user'; i--) currentTurn.unshift(hist[i]);
+    var records = historyQuotes(hist, currentTurn);
+    var question = currentTurn.filter(function(m) { return !m.recalled && !m.note && !m.imgSrc && !m.file; }).map(function(m) { return m.voice ? m.transcript || '' : m.content; }).join(' ');
+    if (!records.length && /以前|之前|前几天|上次|那天|昨[天晚]|前天|刚才|发过|说过|查过|那张|那段|那份|哪条|原图/.test(question)) {
+      var hit = searchChatHistory(hist, question, currentTurn);
+      if (hit) records.push(hit);
+    }
+    var baseMsgs = withHistoryMediaRules(withChatHistoryReads(msgs, records, cfg, historySession, question), historySession);
+    var canRecall = !isGrp && hist.length > currentTurn.length;
+    if (canRecall) baseMsgs = baseMsgs.concat({ role: 'system', content:
+      '如果需要确认当前对话中某条旧记录，而眼前没有足够资料，可以先只输出 <回查记录>能定位原记录的关键词（如 昨天 奶茶 图片）</回查记录>，收到回查结果后再回答。每次回复只能查一次。若已有找回的记录可回答，直接继续。没找到或不确定时请说明。' });
     var errorContext = isChatView && !isGrp && typeof replyErrorContext === 'function' ? replyErrorContext(hist) : null;
-    if (errorContext) msgs.push(errorContext);
-    return llmRequest(msgs.concat(isChatView ? chatFormatRules(charList[replyCharIdx]) : dramaFormatRules(charList[replyCharIdx]), cotRules(!isChatView, replyChar)), {
+    if (errorContext) baseMsgs.push(errorContext);
+    var rules = [].concat(isChatView ? chatFormatRules(replyChar) : dramaFormatRules(replyChar), cotRules(!isChatView, replyChar));
+    var replyTools = records.some(function(record) { return record.tool; }) && !/重新|最新|现在.*查/.test(question) ? [] : mcpTools;
+    var options = {
     stream: true,
     signal: ctrl.signal,
     cfg: cfg,
-    tools: mcpTools,
-    callTool: mcpTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey, recordToolCall); } : null,
+    tools: replyTools,
+    callTool: replyTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey, recordToolCall); } : null,
     toolLabel: function(name) { var hit = mcpToolMap[name]; return hit ? (hit.tool.title || hit.tool.name) : name; },
     onStatus: function(text) {
       typing.bubble.textContent = text;
@@ -534,7 +559,21 @@ function sendMsg(userText, requestOnly, onDone) {
       }
       scrollLive();
     }
-  });
+    };
+    return llmRequest(baseMsgs.concat(rules), options).then(function(text) {
+      var lookup = canRecall && String(text || '').match(/<回查记录>([\s\S]*?)<\/回查记录>/);
+      if (!lookup) return text;
+      var hit = searchChatHistory(hist, lookup[1], currentTurn);
+      var all = hit && !records.some(function(record) { return record.message === hit.message && record.tool === hit.tool; }) ? records.concat(hit) : records;
+      var reread = withHistoryMediaRules(withChatHistoryReads(msgs, all, cfg, historySession, question), historySession);
+      reread.push({ role: 'system', content: hit ? '本轮已完成回查。请直接回答，不再输出回查标签。' :
+        '本轮回查未找到唯一匹配的历史记录。需要时请用户确认是哪一份，不要猜记录内容，也不要再输出回查标签。' });
+      if (errorContext) reread.push(errorContext);
+      aiText = '';
+      clearPreview();
+      typing.bubble.textContent = '正在回看聊天记录…';
+      return llmRequest(reread.concat(rules), Object.assign({}, options, { tools: null, callTool: null }));
+    });
   })
   .then(function(full) {
     if (full) aiText = full;

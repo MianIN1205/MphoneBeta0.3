@@ -6,10 +6,10 @@
 var crMicBtn      = document.getElementById('crMicBtn');
 var _micTimer     = null;
 var _mediaRecorder= null;
-var _audioChunks  = [];
 var _recordStart  = 0;
 var _micStream    = null;
 var _micHolding   = false;
+var pendingVoiceMessages = new WeakMap();
 
 // 麦克风授权后一直保持连接，离开聊天窗口或切到后台才释放：在同一次聊天里只问一次权限
 // （网页拿不到永久权限；安卓选「使用应用时允许」会被浏览器记住，iPhone 会经常重新询问）
@@ -156,8 +156,9 @@ function createVoiceBubble(m, list, empty) {
   var bubbleW = Math.min(220, Math.max(120, 92 + durationSec * 7));
 
   var row = document.createElement('div');
-  row.className = 'chat-msg-row user';
-  row.appendChild(createMsgAvatar('user'));
+  var role = m.role === 'assistant' ? 'ai' : 'user';
+  row.className = 'chat-msg-row ' + role;
+  row.appendChild(createMsgAvatar(role));
 
   // 气泡（点击非播放键区域 → 展开/收起转文字）
   var bubble = document.createElement('div');
@@ -169,6 +170,7 @@ function createVoiceBubble(m, list, empty) {
 
   var playBtn = document.createElement('button');
   playBtn.className = 'voice-play-btn';
+  playBtn.setAttribute('aria-label', '播放语音');
   playBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="rgba(160,80,120,0.85)"><polygon points="3,2 14,8 3,14"/></svg>';
 
   // 波形宽度 = 气泡宽 − 左右内边距 20 − 播放键 28 − 两个间距 14 − 时长 32
@@ -187,20 +189,30 @@ function createVoiceBubble(m, list, empty) {
   bubble.appendChild(inner);
   row.appendChild(bubble);
 
-  // 转文字区域（有转写时默认展开，可直接修改）
+  // 展开时直接显示随消息保存的文字。
   var transcriptWrap = document.createElement('div');
-  transcriptWrap.className = 'voice-transcript-wrap' + (m.transcript ? ' open' : '');
+  transcriptWrap.className = 'voice-transcript-wrap' + (m.role === 'assistant' ? ' incoming' : '');
+  transcriptWrap.inert = true;
   var transcriptEl = document.createElement('div');
   transcriptEl.className = 'voice-transcript';
   transcriptEl.setAttribute('contenteditable', 'true');
-  transcriptEl.setAttribute('data-placeholder', '点这里输入或修改转写文字');
+  transcriptEl.setAttribute('data-placeholder', m.voice.src ? '未识别内容' : '点这里输入文字');
   transcriptEl.textContent = m.transcript || '';
   transcriptWrap.appendChild(transcriptEl);
+  var transcriptStatus = document.createElement('div');
+  transcriptStatus.className = 'voice-transcript-status';
+  transcriptStatus.textContent = '部分转写';
+  transcriptStatus.hidden = m.voice.transcriptStatus !== 'partial';
+  transcriptWrap.appendChild(transcriptStatus);
+  transcriptWrap.appendChild(createVoiceSummary(m, transcriptWrap));
 
   transcriptEl.addEventListener('blur', function() {
     var txt = this.textContent.trim();
     if (txt === (m.transcript || '')) return;
     m.transcript = txt;
+    delete m.voice.transcriptStatus;
+    if (!m.voice.summaryEdited) delete m.voice.summary;
+    transcriptStatus.hidden = true;
     saveHistories();
   });
 
@@ -263,18 +275,14 @@ function createVoiceBubble(m, list, empty) {
     playBtn.innerHTML = PLAY_SVG; _playing = false; stopWaveAnim();
   });
 
-  // 点击气泡非播放键区域 → 展开/收起转文字；还没转写时用语音识别接口转写这段录音
+  // 点击波纹或时长展开文字，播放键独立操作。
   bubble.addEventListener('click', function(e) {
     if (e.target === playBtn || playBtn.contains(e.target)) return;
-    var open = !transcriptWrap.classList.contains('open');
-    transcriptWrap.classList.toggle('open', open);
-    if (open && !m.transcript && !m._transcribing && m.voice.src) {
-      transcribeVoiceMsg(m, transcriptEl);
-    }
+    transcriptWrap.inert = !transcriptWrap.classList.toggle('open');
+    transcriptWrap.querySelector('.voice-summary').dispatchEvent(new Event('summaryupdate'));
     list.scrollTop = list.scrollHeight;
   });
 
-  row._voiceTranscriptEl = transcriptEl;
   list.appendChild(row);
   list.appendChild(transcriptWrap);
   row._msg = m;
@@ -283,23 +291,61 @@ function createVoiceBubble(m, list, empty) {
   return row;
 }
 
-// 用语音识别接口转写一条语音消息，结果写回记录并显示
-function transcribeVoiceMsg(m, el) {
-  m._transcribing = true;
-  if (el) el.textContent = '转写中…';
-  return sttTranscribe(m.voice.src).then(function(text) {
-    m.transcript = text;
-    if (el) { el.textContent = text; el.closest('.voice-transcript-wrap').classList.add('open'); }
-    saveHistories();
-    return text;
-  }).catch(function(err) {
-    if (el) el.textContent = '';
-    var why = /请先配置|404|Not Found|not found|model/i.test(String(err && err.message)) ? '语音识别接口没配好（设置 →「语音识别（转文字）」，可以填硅基流动）' : err.message;
-    if (liveSttErr === 'network') why = '手机自带的识别要连谷歌，现在连不上；' + why;
-    else if (/not-allowed|service-not-allowed/.test(liveSttErr)) why = '手机自带的识别没有权限；' + why;
-    if (el) el.setAttribute('data-placeholder', '转写失败：' + why + '（可手动输入）');
-    throw err;
-  }).then(function(t) { delete m._transcribing; return t; }, function(e) { delete m._transcribing; throw e; });
+function createVoiceSummary(message, transcriptWrap) {
+  var row = document.createElement('div');
+  row.className = 'voice-summary voice-transcript-status';
+  var label = document.createElement('span');
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 200;
+  input.placeholder = '写一句语音摘要';
+  input.setAttribute('aria-label', '语音摘要');
+  input.hidden = true;
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'voice-summary-edit';
+  var pencil = DRAMA_HEAD_ICONS.edit;
+  var check = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+  function paint() {
+    label.textContent = message.voice.summary ? '摘要 · ' + message.voice.summary : '摘要';
+    label.hidden = !input.hidden;
+    button.innerHTML = input.hidden ? pencil : check;
+    button.setAttribute('aria-label', input.hidden ? '编辑语音摘要' : '保存语音摘要');
+  }
+  function done(save) {
+    if (input.hidden) return;
+    if (save) {
+      var value = input.value.trim();
+      if (value) message.voice.summary = value;
+      else delete message.voice.summary;
+      message.voice.summaryEdited = true;
+      saveHistories();
+    }
+    input.hidden = true;
+    paint();
+  }
+  button.addEventListener('pointerdown', function(e) { if (!input.hidden) e.preventDefault(); });
+  button.addEventListener('click', function() {
+    if (!input.hidden) { done(true); return; }
+    input.value = message.voice.summary || '';
+    input.hidden = false;
+    paint();
+    input.focus();
+  });
+  input.addEventListener('blur', function() { done(true); });
+  input.addEventListener('keydown', function(e) {
+    if (e.isComposing || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+    e.preventDefault();
+    done(e.key === 'Enter');
+    button.focus();
+  });
+  row.addEventListener('summaryupdate', function() {
+    if (!transcriptWrap.classList.contains('open')) done(true);
+    paint();
+  });
+  row.append(label, input, button);
+  paint();
+  return row;
 }
 
 // =============================================
@@ -316,13 +362,13 @@ var _voiceZone = '';   // 录音时手指停在哪：'cancel' 左边 ✕ / 'text
 
 function voiceHintText(t) { if (voiceHint) voiceHint.textContent = t; }
 var voiceToText = document.getElementById('voiceToText');
-// 小条最下面一行小字：现在的模型能不能直接听语音（用户要的：听不了就滑到「文」发文字）
+// 小条最下面一行小字：提示当前模型会收到录音还是转写。
 function voiceCapPaint() {
   var el = document.getElementById('voiceCap'), c = charList[openingChatCharIdx];
   var cfg = c && typeof getApiCfg === 'function' ? getApiCfg(c) : null;
   if (!cfg || !cfg.model) { el.textContent = ''; return; }
   var can = typeof llmCaps === 'function' && llmCaps(cfg).audio;
-  el.textContent = !can ? '这个模型听不了语音，滑到「文」发文字' : mediaCfg.voiceMode === 'audio' ? '这个模型能直接听语音' : '设置里选了转成文字，TA 看的是转写';
+  el.textContent = can ? '这个模型可以听录音' : '这个模型会读语音转写';
 }
 function openVoicePop() {
   if (typeof closeCrPlusPanel === 'function') closeCrPlusPanel();
@@ -380,15 +426,16 @@ function stopRecOverlay() {
 // ---------- 手机 / 浏览器自带的语音识别（保底转文字，不靠模型） ----------
 // 录音的同时让浏览器边听边转成文字，存进这条语音的转写：能听音频的模型照样听录音，听不了的就用这段文字
 // · 设置 → 识图与语音 →「录音时用手机自带的识别」可以关（mediaCfg.liveStt）
-// · 有的浏览器没有这个功能，或者要连谷歌的服务器（国内网络可能用不了）：识别不到就退回原来的语音识别接口
+// · 浏览器识别不到时保留录音，转写区域显示「未识别内容」
 var VoiceSR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
-var _liveSR = null, _liveText = '', _liveInterim = '', _liveDone = null, liveSttErr = '';   // liveSttErr：自带识别上次为什么没用上（转写失败时告诉用户）
+var _liveSR = null;
 function liveSttOn() { return !!VoiceSR && mediaCfg.liveStt !== false; }
 function startLiveStt() {
-  _liveText = ''; _liveInterim = ''; _liveDone = null; _liveSR = null;
+  _liveSR = null;
   if (!liveSttOn()) return;
   try {
     var sr = new VoiceSR();
+    var capture = { recognizer: sr, finalText: '', interimText: '', interrupted: false, finishing: false };
     sr.lang = (navigator.language && /^zh/i.test(navigator.language)) ? navigator.language : 'zh-CN';
     sr.continuous = true;
     sr.interimResults = true;
@@ -398,27 +445,40 @@ function startLiveStt() {
         var t = ev.results[i][0] ? ev.results[i][0].transcript : '';
         if (ev.results[i].isFinal) fin += t; else mid += t;
       }
-      _liveText = fin; _liveInterim = mid;
+      capture.finalText = fin; capture.interimText = mid;
     };
-    sr.onerror = function(ev) { liveSttErr = ev && ev.error; console.warn('[Mphone] 自带语音识别没用上:', liveSttErr); };
-    _liveDone = new Promise(function(res) { sr.onend = function() { res(); }; });
+    sr.onerror = function() { capture.interrupted = true; };
+    capture.done = new Promise(function(resolve) {
+      sr.onend = function() {
+        if (!capture.finishing) capture.interrupted = true;
+        resolve();
+      };
+    });
     sr.start();
-    _liveSR = sr;
-  } catch (err) { console.warn('[Mphone] 自带语音识别没用上:', err); _liveSR = null; _liveDone = null; }
+    _liveSR = capture;
+  } catch (err) { console.warn('[Mphone] 自带语音识别没用上:', err); }
 }
-// 停下识别，等它把最后一句交出来（最多等 2 秒）；返回识别到的文字（没有就是空）
 function stopLiveStt() {
-  var sr = _liveSR, done = _liveDone;
-  _liveSR = null; _liveDone = null;
-  if (!sr) return Promise.resolve('');
-  try { sr.stop(); } catch (_) {}
-  return Promise.race([done, new Promise(function(r) { setTimeout(r, 2000); })]).then(function() {
-    return (_liveText + _liveInterim).replace(/\s+/g, ' ').trim();
+  var capture = _liveSR;
+  _liveSR = null;
+  if (!capture) return Promise.resolve({ text: '' });
+  capture.finishing = true;
+  try { capture.recognizer.stop(); } catch (_) {}
+  var timer;
+  var deadline = new Promise(function(resolve) { timer = setTimeout(function() { resolve(true); }, 2000); });
+  return Promise.race([capture.done, deadline]).then(function(timedOut) {
+    clearTimeout(timer);
+    if (timedOut) {
+      try { capture.recognizer.abort(); } catch (_) {}
+    }
+    var text = (capture.finalText + capture.interimText).replace(/\s+/g, ' ').trim();
+    return { text: text, partial: !!(capture.interimText || capture.interrupted || timedOut) };
   });
 }
 function abortLiveStt() {
-  var sr = _liveSR; _liveSR = null; _liveDone = null;
-  if (sr) { try { sr.abort(); } catch (_) {} }
+  var capture = _liveSR;
+  _liveSR = null;
+  if (capture) { try { capture.recognizer.abort(); } catch (_) {} }
 }
 
 // 按住 🎙：开始录音
@@ -435,12 +495,13 @@ voiceRecBtn.addEventListener('pointerdown', function(e) {
       .then(function(stream) {
         // 等待麦克风授权期间已经松手 → 不再开始录音
         if (!_micHolding) return;
-        _audioChunks  = [];
-        _mediaRecorder= new MediaRecorder(stream);
-        _mediaRecorder.ondataavailable = function(ev) {
-          if (ev.data && ev.data.size > 0) _audioChunks.push(ev.data);
+        var recorder = new MediaRecorder(stream);
+        recorder.chunks = [];
+        recorder.ondataavailable = function(ev) {
+          if (ev.data && ev.data.size > 0) recorder.chunks.push(ev.data);
         };
-        _mediaRecorder.start();
+        _mediaRecorder = recorder;
+        recorder.start();
         _recordStart = Date.now();
         startLiveStt();
         startRecOverlay();
@@ -467,7 +528,7 @@ voiceRecBtn.addEventListener('pointermove', function(e) {
   if (z && navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} }
 });
 voiceRecBtn.addEventListener('pointerup', function() { voiceRecBtn.classList.remove('pressing'); finishRecording(_voiceZone !== 'cancel', _voiceZone === 'text'); });
-voiceRecBtn.addEventListener('pointercancel', function() { voiceRecBtn.classList.remove('pressing'); finishRecording(false); abortLiveStt(); });
+voiceRecBtn.addEventListener('pointercancel', function() { voiceRecBtn.classList.remove('pressing'); finishRecording(false); });
 voiceRecBtn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
 // 结束录音：send = true 发出去，false 丢掉；asText = 转成文字、当普通消息发（转不出来就还是发语音）
@@ -479,55 +540,58 @@ function finishRecording(send, asText) {
   }
   _micHolding = false;
   var duration = (Date.now() - _recordStart) / 1000;
-  var liveP = send ? stopLiveStt() : (abortLiveStt(), Promise.resolve(''));
-  _mediaRecorder.onstop = function() {
-    if (!appChatRoom.classList.contains('active') || document.hidden) releaseMic();
-    if (!send) { showToast('已取消', 'plain'); return; }
-    // iPhone Safari 录的是 audio/mp4，其他浏览器多为 audio/webm，按录音器实际格式保存
-    var type = (_mediaRecorder.mimeType || 'audio/webm').split(';')[0];
-    var blob = new Blob(_audioChunks, { type: type });
-    if (duration < 0.6) { showToast('录音时间太短', 'error'); return; }
-    if (openingChatCharIdx === -1) return;
-    var reader = new FileReader();
-    reader.onload = function() {
-      if (asText) {
-        var src = reader.result, sendVoice = this.onload.bind(this);
-        liveP.then(function(t) { return t || (sttReady() ? sttTranscribe(src) : ''); }).catch(function() { return ''; }).then(function(t) {
-          t = String(t || '').trim();
-          if (t) { appendUserMsg(t); return; }
-          showToast('没转出文字，先发成语音了', 'plain');
-          asText = false; liveP = Promise.resolve(''); sendVoice();
-        });
-        return;
-      }
-      var m = { role: 'user', content: '[语音消息]', voice: { src: reader.result, dur: Math.round(duration * 10) / 10 }, time: Date.now() };
-      if (pendingQuote) { m.quote = pendingQuote; clearQuote(); }
-      getChatHistory(openingChatCharIdx).push(m);
-      saveHistories();
-      var row = renderHistMsg(m, document.getElementById('chatMsgList'), document.getElementById('chatRoomEmpty'));
-      // 「转成文字」模式：录完自动转写；「发送音频」模式下，现在用的模型听不了音频时也先转好，发的时候用转写
-      var hearCfg = typeof getApiCfg === 'function' ? getApiCfg(charList[openingChatCharIdx]) : null;
-      var cantHear = mediaCfg.voiceMode === 'audio' && hearCfg && hearCfg.model && typeof llmCaps === 'function' && !llmCaps(hearCfg).audio;
-      // 手机自带的识别先转出来了：直接当转写（能听的模型照样只听录音，见 js/chat/prompt.js）
-      m._transcribing = true;
-      liveP.then(function(text) {
-        delete m._transcribing;
-        if (text && !m.transcript) {
-          m.transcript = text;
-          var el = row && row._voiceTranscriptEl;
-          if (el) { el.textContent = text; el.closest('.voice-transcript-wrap').classList.add('open'); }
-          saveHistories();
-          return;
-        }
-        if (m.transcript) return;
-        if ((mediaCfg.voiceMode === 'text' || cantHear) && sttReady()) {
-          transcribeVoiceMsg(m, row && row._voiceTranscriptEl).catch(function(err) {
-            showToast('✗ 语音转写失败：' + err.message + '（点开语音可以自己输入）', 'error');
-          });
-        }
-      });
+  var recorder = _mediaRecorder;
+  if (!send || duration < 0.6 || openingChatCharIdx === -1) {
+    abortLiveStt();
+    recorder.onstop = function() {
+      if (!appChatRoom.classList.contains('active') || document.hidden) releaseMic();
     };
-    reader.readAsDataURL(blob);
-  };
-  _mediaRecorder.stop();
+    recorder.stop();
+    if (!send) showToast('已取消', 'plain');
+    else if (duration < 0.6) showToast('录音时间太短', 'error');
+    return;
+  }
+  var time = Date.now(), quote = pendingQuote;
+  var hist = getChatHistory(openingChatCharIdx);
+  if (quote) clearQuote();
+  var recognition = stopLiveStt();
+  var audio = new Promise(function(resolve, reject) {
+    recorder.onstop = function() {
+      if (!appChatRoom.classList.contains('active') || document.hidden) releaseMic();
+      var reader = new FileReader();
+      reader.onload = function() { resolve(reader.result); };
+      reader.onerror = function() { reject(reader.error); };
+      reader.readAsDataURL(new Blob(recorder.chunks, { type: (recorder.mimeType || 'audio/webm').split(';')[0] }));
+    };
+    recorder.stop();
+  });
+  var ready = Promise.all([pendingVoiceMessages.get(hist), audio, recognition]).then(function([, src, transcript]) {
+    var m = { role: 'user', content: '[语音消息]', time: time };
+    if (quote) m.quote = quote;
+    if (asText && transcript.text) {
+      m.content = transcript.text;
+    } else {
+      if (asText) showToast('没转出文字，先发成语音了', 'plain');
+      m.voice = { src: src, dur: Math.round(duration * 10) / 10 };
+      if (transcript.text) {
+        m.transcript = transcript.text;
+        if (transcript.partial) m.voice.transcriptStatus = 'partial';
+      }
+    }
+    var at = hist.findIndex(function(item) { return item.time > time; });
+    if (at < 0) hist.push(m);
+    else hist.splice(at, 0, m);
+    saveHistories();
+    if (appChatRoom.classList.contains('active') && openingChatCharIdx >= 0 && hist === getActiveHistory(openingChatCharIdx)) {
+      if (at < 0) renderHistMsg(m, document.getElementById('chatMsgList'), document.getElementById('chatRoomEmpty'));
+      else renderRoomLists(openingChatCharIdx);
+    }
+  }).catch(function(err) {
+    console.warn('[Mphone] 保存语音失败:', err);
+    showToast('语音没能保存', 'error');
+  });
+  pendingVoiceMessages.set(hist, ready);
+  ready.then(function() {
+    if (pendingVoiceMessages.get(hist) === ready) pendingVoiceMessages.delete(hist);
+  });
 }

@@ -155,6 +155,10 @@
 .cr-mcp-entry + .cr-mcp-entry { border-top: 1px solid #eee2e9; margin-top: 9px; padding-top: 9px; }
 .cr-mcp-meta, .cr-mcp-field { font-size: 11px; color: #756674; }
 .cr-mcp-field { margin-top: 7px; }
+.cr-mcp-reread {
+  margin-top: 8px; padding: 4px 9px; border: 1px solid #e4cdd8; border-radius: 9px;
+  background: #fff8fb; color: #80516a; font: inherit; font-size: 11px; cursor: pointer;
+}
 .cr-mcp-value {
   margin-top: 2px;
   max-height: 150px;
@@ -227,9 +231,9 @@
 
 /* 转文字附着区（默认折叠） */
 .voice-transcript-wrap {
-  display: flex; justify-content: flex-end;
+  display: flex; flex-direction: column; align-items: flex-end;
   flex-shrink: 0;   /* 消息列表很长时不被压扁 */
-  padding: 0 14px;
+  padding: 0 39px;
   overflow: hidden;
   max-height: 0;
   opacity: 0;
@@ -238,10 +242,11 @@
 .voice-transcript-wrap.open {
   max-height: 320px;
   opacity: 1;
-  padding: 4px 14px 0;
+  padding-top: 4px;
 }
 .voice-transcript {
   max-width: 72%; min-width: 60px;
+  max-height: 280px; overflow: auto;
   font-size: 13px; color: #555; line-height: 1.5;
   background: rgba(255,255,255,0.62);
   border-radius: 10px; padding: 7px 11px;
@@ -255,7 +260,20 @@
   box-shadow: inset 0 1px 4px rgba(0,0,0,0.07),
               0 0 0 1.5px rgba(200,128,160,0.38);
 }
-.voice-transcript:empty::before { content: attr(data-placeholder); color: #bbb; }
+.voice-transcript:empty::before { content: attr(data-placeholder); color: #78656e; }
+.voice-transcript-wrap.incoming { align-items: flex-start; }
+.voice-transcript-status { font-size: 11px; color: #777; padding: 3px 4px 0; }
+.voice-summary { display: flex; align-items: center; gap: 5px; max-width: 92%; }
+.voice-summary span { min-width: 0; overflow-wrap: anywhere; }
+.voice-summary input {
+  width: min(215px, 55vw); min-width: 0; padding: 4px 7px; border: 1px solid #e5cdd9;
+  border-radius: 7px; background: #fff9fc; color: #554750; font-size: inherit;
+}
+.voice-summary-edit {
+  flex: 0 0 24px; height: 24px; display: grid; place-items: center;
+  border: 0; border-radius: 6px; padding: 0; color: #876475; background: transparent; cursor: pointer;
+}
+.voice-summary-edit svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
 
 /* 录音小条：点麦克风后在输入栏上方淡入（js/chat/voice.js）。上面一行时长、波纹、提示；下面录音键在正中间、✕ 在左边（用户要的） */
 .voice-pop {
@@ -453,6 +471,15 @@
   background: #231b24aa; color: #fff4f9; font-size: 12px; pointer-events: none;
 }
 .img-viewer-count[hidden], .img-viewer-sticker-name[hidden] { display: none; }
+.img-viewer-notes {
+  position: absolute; bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100% - 44px); padding: 7px 11px; border-radius: 12px;
+  border: 1px solid #e5ccd455; background: #241c24e8; color: #fff4f9;
+  font-size: 12px; line-height: 1.55; touch-action: pan-y;
+}
+.img-viewer-notes[open] { width: min(328px, calc(100% - 44px)); }
+.img-viewer-notes summary { cursor: pointer; }
+.img-viewer-notes div { white-space: pre-line; overflow-wrap: anywhere; margin-top: 5px; max-height: 8em; overflow-y: auto; }
 .img-viewer.is-sticker { flex-direction: column; gap: 10px; }
 .img-viewer.is-sticker img { max-width: 90%; max-height: 72%; }
 .img-viewer-sticker-name {

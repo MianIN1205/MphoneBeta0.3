@@ -359,6 +359,14 @@ function renderMcpNotice(run, notice) {
       value.textContent = field[1];
       entry.append(label, value);
     });
+    if (item.state === 'done' && (item.result || item.savedResult)) {
+      var use = document.createElement('button');
+      use.type = 'button';
+      use.className = 'cr-mcp-reread';
+      use.textContent = '读上次结果';
+      use.addEventListener('click', function() { quoteSavedTool(notice, item); });
+      entry.appendChild(use);
+    }
     body.appendChild(entry);
   });
   return notice;
@@ -439,9 +447,9 @@ function trailingReplyGroup(hist) {
 
 function cloneGroup(group) {
   return group.map(function(g) {
-    return { role: g.role, content: g.content, sticker: g.sticker, status: g.status, time: g.time, recap: g.recap, pat: g.pat, cal: g.cal, think: g.think, errTrail: g.errTrail, mcpLead: g.mcpLead, mcpRuns: g.mcpRuns, autoPrevAt: g.autoPrevAt,
-             recalled: g.recalled, recalledText: g.recalledText, recalledBy: g.recalledBy,
-             action: g.action ? JSON.parse(JSON.stringify(g.action)) : undefined };
+    var copy = stripMsg(g, true);
+    if (copy.action) copy.action = JSON.parse(JSON.stringify(copy.action));
+    return copy;
   });
 }
 
