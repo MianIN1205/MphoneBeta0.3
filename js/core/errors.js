@@ -169,10 +169,11 @@ function errPack(err, ctx) {
   return o;
 }
 // 记下这次报错（不画），返回存好的那份
-function errRemember(hist, err, ctx) {
+function errRemember(hist, err, ctx, placement) {
   var p = errPack(err, ctx);
+  if (placement) p.operation = placement.operation;
   if (!hist) return p;
-  var m = hist[hist.length - 1];
+  var m = placement ? placement.anchor : hist[hist.length - 1];
   if (m) {
     m.errTrail = addErrTrail(m.errTrail, m.errs, p);
     m.errs = (m.errs || []).concat(p).slice(-ERR_KEEP);
@@ -271,17 +272,17 @@ function replyErrorContext(hist) {
 }
 
 function errNoticeEl(p) {
-  var e = { message: p.message, status: p.status, statusText: p.statusText, name: p.name, url: p.url, body: p.body, stack: p.stack };
-  var ex = explainError(e);
+  var ex = explainError(p);
   var el = document.createElement('div');
   el.className = 'cr-recall-notice cr-err-notice';
-  var summary = errShortLabel(e, ex);
-  el.appendChild(document.createTextNode('⚠️ 回复失败 · ' + summary));
+  var summary = errShortLabel(p, ex);
+  var label = p.operation === 'regenerate' ? '重新生成失败' : '回复失败';
+  el.appendChild(document.createTextNode('⚠️ ' + label + ' · ' + summary));
   var more = document.createElement('span');
   more.className = 'cr-recall-reedit';
   more.textContent = '查看详情';
   el.appendChild(more);
-  var detail = { ex: ex, err: e, time: p.time, summary: summary, ctx: { model: p.model, url: p.ctxUrl } };
+  var detail = { ex: ex, err: p, time: p.time, summary: summary, ctx: { model: p.model, url: p.ctxUrl } };
   el.addEventListener('click', function() { openErrInfo(detail); });
   return el;
 }

@@ -141,7 +141,7 @@ function withChatHistoryReads(msgs, records, cfg, session, query) {
     if (media.length && media.every(function(part) { return alreadySent.has(part.type === 'image_url' ? part.image_url.url : part._voiceSrc); })) {
       source = [source[0], { type: 'text', text: '这条记录的原媒体已附在本次消息历史中。' }];
     } else if (!record.tool) {
-      source = historyVoicePrompt(historyPhotoPrompt(source, record.message, session), record.message, session);
+      source = historyPhotoPrompt(source, record.message, session);
     }
     parts.push.apply(parts, source);
   });
@@ -171,40 +171,10 @@ function historyPhotoPrompt(parts, message, session) {
   return [{ type: 'text', text: '这一组图片的看图记录编号：' + entry.id + '（' + count + ' 张）' }].concat(parts);
 }
 
-function withHistoryMediaRules(msgs, session) {
-  var rules = [];
-  if (session.photos.length) rules.push('对标有看图记录编号且确实收到原图的组，正常回复后另附 <看图记录>{"1":[{"scene":"实际看见的画面","detail":"你当时注意到的具体细节"}]}</看图记录>。键是组编号，数组按原图顺序。只写实际看见的内容。单张缺失时写 null。');
-  if (session.voices.length) rules.push('对标有语音摘要编号且已有可理解内容的消息，正常回复后附上 <语音记录>{"1":"一句话记录用户说的重点"}</语音记录>。仅依据收到的录音或转写；听不清或没有文字的编号省略。');
-  return rules.length ? msgs.concat({ role: 'system', content: rules.join('\n') }) : msgs;
-}
-
-function historyVoicePrompt(parts, message, session) {
-  if (!session || !message.voice || message.voice.summary || message.voice.summaryEdited || message.recalled ||
-      !(message.transcript || (Array.isArray(parts) && session.canHear && parts.some(function(p) { return p.type === 'input_audio'; }))) ||
-      !(message.voice.dur >= 12 || (message.transcript || '').length >= 100)) return parts;
-  var entry = session.voices.find(function(voice) { return voice.message === message; });
-  if (!entry) {
-    if (session.voices.length >= 2) return parts;
-    entry = { id: String(session.voices.length + 1), message: message };
-    session.voices.push(entry);
-  }
-  var label = '语音摘要编号：' + entry.id;
-  return Array.isArray(parts) ? [{ type: 'text', text: label }].concat(parts) : label + '\n' + parts;
-}
-
-function saveHistoryVoiceNotes(text, session, hist) {
-  return String(text || '').replace(/<语音记录>([\s\S]*?)(<\/语音记录>|$)/g, function(_, raw, closed) {
-    if (!closed || !session) return '';
-    var data;
-    try { data = JSON.parse(raw.trim()); } catch (_) { return ''; }
-    session.voices.forEach(function(voice) {
-      var m = voice.message, summary = data && data[voice.id];
-      if (!hist.includes(m) || m.recalled || !m.voice || m.voice.summary || m.voice.summaryEdited || (!session.canHear && !m.transcript) || typeof summary !== 'string') return;
-      var short = summary.replace(/\s+/g, ' ').trim().slice(0, 200);
-      if (short) m.voice.summary = short;
-    });
-    return '';
-  }).trim();
+function withHistoryPhotoRules(msgs, session) {
+  if (!session.photos.length) return msgs;
+  return msgs.concat({ role: 'system', content:
+    '对标有看图记录编号且确实收到原图的组，正常回复后另附 <看图记录>{"1":[{"scene":"实际看见的画面","detail":"你当时注意到的具体细节"}]}</看图记录>。键是组编号，数组按原图顺序。只写实际看见的内容。单张缺失时写 null。' });
 }
 
 function saveHistoryPhotoNotes(text, session, hist) {

@@ -53,6 +53,7 @@ function partsText(content) {
 // 整理消息：去空消息、换掉不支持的媒体、按接口要求合并
 function voiceTextForAI(transcript, status) {
   if (!transcript) return '（没有收到音频，也没有可用的转写）';
+  if (status === 'manual') return '（语音文字由用户手动填写，可能是原话或声音描述；没有听到录音）：' + transcript;
   var label = status === 'partial' ? '部分转写' : '转写';
   return '（仅收到语音' + label + '，没有听到录音，请按文字理解）：' + transcript;
 }

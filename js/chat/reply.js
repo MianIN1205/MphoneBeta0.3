@@ -22,7 +22,7 @@ var REPLY_TAGS = [
   { names: ['签名'] },
   { names: ['个性签名'] },
   { names: ['照片', '配图'] },
-  { names: ['看图记录', '语音记录', '回查记录'] },
+  { names: ['看图记录', '回查记录'] },
   { names: ['前情'] },
   { names: ['文件'] },
   { names: ['日程', '提醒', '闹钟'] },
@@ -335,11 +335,18 @@ function genReattach() {
   syncGenBtn();
 }
 
-// onDone(added)：回复结束后调用，added 是写入记录的角色消息（失败或停止且没有内容时为空数组）
-function sendMsg(userText, requestOnly, onDone) {
+// onDone 接收写入记录的回复。重新生成时由 onFailure 先恢复原回复，再记录错误。
+function sendMsg(userText, requestOnly, onDone, onFailure) {
   var cfg = getApiCfg(charList[openingChatCharIdx]);
-  if (!cfg.url || !cfg.key) { showErrNotice(new Error('请先在设置中填写 API 地址和密钥'), null, getActiveEmptyEl(), cfg); if (onDone) onDone([]); return; }
-  if (!cfg.model)           { showErrNotice(new Error('请先选择模型'), null, getActiveEmptyEl(), cfg); if (onDone) onDone([]); return; }
+  if (!cfg.url || !cfg.key || !cfg.model) {
+    var error = new Error(!cfg.url || !cfg.key ? '请先在设置中填写 API 地址和密钥' : '请先选择模型');
+    if (onFailure) onFailure(error, cfg);
+    else {
+      showErrNotice(error, null, getActiveEmptyEl(), cfg);
+      if (onDone) onDone([]);
+    }
+    return;
+  }
   var hist = getActiveHistory(openingChatCharIdx);
   var replyCharIdx = openingChatCharIdx;
   var replyChar = charList[replyCharIdx];
@@ -355,8 +362,7 @@ function sendMsg(userText, requestOnly, onDone) {
   var toolRun = { entries: [] }, toolDots = typing.bubble.firstChild;
   var toolAnchor = hist[hist.length - 1];
   var generation = genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
-  var capabilities = llmCaps(cfg);
-  var historySession = { canSee: !!(mediaCfg.vision && capabilities.image), canHear: capabilities.audio, photos: [], voices: [] };
+  var historySession = { canSee: !!(mediaCfg.vision && llmCaps(cfg).image), photos: [] };
   syncGenBtn();
   // 这个角色的聊天室开着（不管在看聊天还是剧情）就画进对应的列表；切去别的角色时不碰那边的列表
   function roomOpen() { return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === replyChar; }
@@ -410,8 +416,6 @@ function sendMsg(userText, requestOnly, onDone) {
     if (showing && !isChatView && currentCrSubView === 'contacts' && typeof crDramaSeen === 'function') crDramaSeen(replyChar);
     historySession.canSee = historySession.canSee && llmCaps(cfg).image;
     text = saveHistoryPhotoNotes(text, historySession, hist).replace(/<回查记录>[\s\S]*?(<\/回查记录>|$)/g, '').trim();
-    historySession.canHear = historySession.canHear && llmCaps(cfg).audio;
-    text = saveHistoryVoiceNotes(text, historySession, hist);
     if (!isGrp) text = replyTakeTags(replyChar, text);   // 改密码、星星、待关心、记下持有…（见上面的标签表）
     var mark = list ? list.lastChild : null;
     var lead = !toolAnchor && toolRun.entries.length ? toolRun : null;
@@ -496,8 +500,12 @@ function sendMsg(userText, requestOnly, onDone) {
     } else {
       typing.row.remove();
       clearPreview();
-      showReplyError(new Error('未收到回复内容'));
-      if (onDone) onDone([]);
+      var error = new Error('未收到回复内容');
+      if (onFailure) onFailure(error, cfg);
+      else {
+        showReplyError(error);
+        if (onDone) onDone([]);
+      }
     }
   }
   // 开了 MCP 时把工具交给模型；用工具的过程显示在打字气泡里
@@ -520,7 +528,7 @@ function sendMsg(userText, requestOnly, onDone) {
       var hit = searchChatHistory(hist, question, currentTurn);
       if (hit) records.push(hit);
     }
-    var baseMsgs = withHistoryMediaRules(withChatHistoryReads(msgs, records, cfg, historySession, question), historySession);
+    var baseMsgs = withHistoryPhotoRules(withChatHistoryReads(msgs, records, cfg, historySession, question), historySession);
     var canRecall = !isGrp && hist.length > currentTurn.length;
     if (canRecall) baseMsgs = baseMsgs.concat({ role: 'system', content:
       '如果需要确认当前对话中某条旧记录，而眼前没有足够资料，可以先只输出 <回查记录>能定位原记录的关键词（如 昨天 奶茶 图片）</回查记录>，收到回查结果后再回答。每次回复只能查一次。若已有找回的记录可回答，直接继续。没找到或不确定时请说明。' });
@@ -565,7 +573,7 @@ function sendMsg(userText, requestOnly, onDone) {
       if (!lookup) return text;
       var hit = searchChatHistory(hist, lookup[1], currentTurn);
       var all = hit && !records.some(function(record) { return record.message === hit.message && record.tool === hit.tool; }) ? records.concat(hit) : records;
-      var reread = withHistoryMediaRules(withChatHistoryReads(msgs, all, cfg, historySession, question), historySession);
+      var reread = withHistoryPhotoRules(withChatHistoryReads(msgs, all, cfg, historySession, question), historySession);
       reread.push({ role: 'system', content: hit ? '本轮已完成回查。请直接回答，不再输出回查标签。' :
         '本轮回查未找到唯一匹配的历史记录。需要时请用户确认是哪一份，不要猜记录内容，也不要再输出回查标签。' });
       if (errorContext) reread.push(errorContext);
@@ -581,6 +589,12 @@ function sendMsg(userText, requestOnly, onDone) {
   })
   .catch(function(err) {
     endGen();
+    if (onFailure && err.name !== 'AbortError') {
+      typing.row.remove();
+      clearPreview();
+      onFailure(err, cfg);
+      return;
+    }
     // 已收到的部分内容保留下来；手动停止时不显示错误
     var added = aiText ? deliver(aiText) : (typing.row.remove(), clearPreview(), []);
     if (err.name !== 'AbortError') showReplyError(err);
@@ -598,19 +612,32 @@ function regenerateLast() {
   var alts = first.alts ? first.alts.slice() : [cloneGroup(g.msgs)];
   if (first.alts) alts[first.altIdx] = cloneGroup(g.msgs);
   var oldGroup = g.msgs;
+  var preceding = hist[g.start - 1];
   hist.splice(g.start, g.msgs.length);
   renderRoomLists(openingChatCharIdx);
+  function restoreOriginal() {
+    var index = hist.indexOf(preceding);
+    hist.splice(index < 0 ? Math.min(g.start, hist.length) : index + 1, 0, ...oldGroup);
+  }
+  function stillVisible() {
+    return appChatRoom.classList.contains('active') && openingChatCharIdx >= 0 && getActiveHistory(openingChatCharIdx) === hist;
+  }
   sendMsg('', true, function(added) {
+    if (!charOfHistory(hist)) return;
     if (!added.length) {
-      // 没生成出内容：放回原来的回复
-      var cur = trailingReplyGroup(hist);
-      if (!cur.msgs.length) Array.prototype.push.apply(hist, oldGroup);
+      restoreOriginal();
     } else {
       alts.push(cloneGroup(added));
       added[0].alts = alts;
       added[0].altIdx = alts.length - 1;
     }
     saveHistories();
-    if (appChatRoom.classList.contains('active') && getActiveHistory(openingChatCharIdx) === hist) renderRoomLists(openingChatCharIdx);
+    if (stillVisible()) renderRoomLists(openingChatCharIdx);
+  }, function(err, cfg) {
+    if (!charOfHistory(hist)) return;
+    restoreOriginal();
+    errRemember(hist, err, cfg, { anchor: oldGroup[oldGroup.length - 1], operation: 'regenerate' });
+    if (stillVisible()) renderRoomLists(openingChatCharIdx);
+    else showToast('重新生成失败 · ' + explainError(err).title, 'error');
   });
 }

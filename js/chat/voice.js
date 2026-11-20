@@ -193,28 +193,11 @@ function createVoiceBubble(m, list, empty) {
   var transcriptWrap = document.createElement('div');
   transcriptWrap.className = 'voice-transcript-wrap' + (m.role === 'assistant' ? ' incoming' : '');
   transcriptWrap.inert = true;
-  var transcriptEl = document.createElement('div');
-  transcriptEl.className = 'voice-transcript';
-  transcriptEl.setAttribute('contenteditable', 'true');
-  transcriptEl.setAttribute('data-placeholder', m.voice.src ? '未识别内容' : '点这里输入文字');
-  transcriptEl.textContent = m.transcript || '';
-  transcriptWrap.appendChild(transcriptEl);
   var transcriptStatus = document.createElement('div');
   transcriptStatus.className = 'voice-transcript-status';
   transcriptStatus.textContent = '部分转写';
   transcriptStatus.hidden = m.voice.transcriptStatus !== 'partial';
-  transcriptWrap.appendChild(transcriptStatus);
-  transcriptWrap.appendChild(createVoiceSummary(m, transcriptWrap));
-
-  transcriptEl.addEventListener('blur', function() {
-    var txt = this.textContent.trim();
-    if (txt === (m.transcript || '')) return;
-    m.transcript = txt;
-    delete m.voice.transcriptStatus;
-    if (!m.voice.summaryEdited) delete m.voice.summary;
-    transcriptStatus.hidden = true;
-    saveHistories();
-  });
+  transcriptWrap.append(createVoiceTranscript(m, transcriptStatus), transcriptStatus);
 
   // 解码绘制静态波形（结果缓存供停止播放后重绘）
   var _decoded = null;
@@ -279,7 +262,6 @@ function createVoiceBubble(m, list, empty) {
   bubble.addEventListener('click', function(e) {
     if (e.target === playBtn || playBtn.contains(e.target)) return;
     transcriptWrap.inert = !transcriptWrap.classList.toggle('open');
-    transcriptWrap.querySelector('.voice-summary').dispatchEvent(new Event('summaryupdate'));
     list.scrollTop = list.scrollHeight;
   });
 
@@ -291,34 +273,39 @@ function createVoiceBubble(m, list, empty) {
   return row;
 }
 
-function createVoiceSummary(message, transcriptWrap) {
-  var row = document.createElement('div');
-  row.className = 'voice-summary voice-transcript-status';
-  var label = document.createElement('span');
-  var input = document.createElement('input');
-  input.type = 'text';
-  input.maxLength = 200;
-  input.placeholder = '写一句语音摘要';
-  input.setAttribute('aria-label', '语音摘要');
+function createVoiceTranscript(message, status) {
+  var card = document.createElement('div');
+  card.className = 'voice-transcript-card';
+  var label = document.createElement('div');
+  label.className = 'voice-transcript';
+  label.dataset.placeholder = message.voice.src ? '未识别内容' : '未填写文字';
+  var input = document.createElement('textarea');
+  input.className = 'voice-transcript-editor';
+  input.rows = 2;
+  input.placeholder = '填写原话或声音描述';
+  input.setAttribute('aria-label', '语音转写文字');
   input.hidden = true;
   var button = document.createElement('button');
   button.type = 'button';
-  button.className = 'voice-summary-edit';
+  button.className = 'voice-transcript-edit';
   var pencil = DRAMA_HEAD_ICONS.edit;
   var check = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
   function paint() {
-    label.textContent = message.voice.summary ? '摘要 · ' + message.voice.summary : '摘要';
+    label.textContent = message.transcript || '';
     label.hidden = !input.hidden;
     button.innerHTML = input.hidden ? pencil : check;
-    button.setAttribute('aria-label', input.hidden ? '编辑语音摘要' : '保存语音摘要');
+    button.setAttribute('aria-label', input.hidden ? '编辑语音转写' : '保存语音转写');
   }
   function done(save) {
     if (input.hidden) return;
-    if (save) {
-      var value = input.value.trim();
-      if (value) message.voice.summary = value;
-      else delete message.voice.summary;
-      message.voice.summaryEdited = true;
+    var value = input.value.trim();
+    if (save && value !== (message.transcript || '')) {
+      message.transcript = value;
+      if (value) message.voice.transcriptStatus = 'manual';
+      else delete message.voice.transcriptStatus;
+      delete message.voice.summary;
+      delete message.voice.summaryEdited;
+      status.hidden = true;
       saveHistories();
     }
     input.hidden = true;
@@ -327,25 +314,22 @@ function createVoiceSummary(message, transcriptWrap) {
   button.addEventListener('pointerdown', function(e) { if (!input.hidden) e.preventDefault(); });
   button.addEventListener('click', function() {
     if (!input.hidden) { done(true); return; }
-    input.value = message.voice.summary || '';
+    input.value = message.transcript || '';
     input.hidden = false;
     paint();
     input.focus();
   });
   input.addEventListener('blur', function() { done(true); });
   input.addEventListener('keydown', function(e) {
-    if (e.isComposing || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+    var save = e.key === 'Enter' && (e.ctrlKey || e.metaKey);
+    if (e.isComposing || (!save && e.key !== 'Escape')) return;
     e.preventDefault();
-    done(e.key === 'Enter');
+    done(save);
     button.focus();
   });
-  row.addEventListener('summaryupdate', function() {
-    if (!transcriptWrap.classList.contains('open')) done(true);
-    paint();
-  });
-  row.append(label, input, button);
+  card.append(label, input, button);
   paint();
-  return row;
+  return card;
 }
 
 // =============================================
