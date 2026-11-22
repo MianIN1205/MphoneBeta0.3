@@ -173,7 +173,7 @@ document.getElementById('migOk').addEventListener('click', function() {
   var picked = Array.prototype.filter.call(document.querySelectorAll('#migWbList input'), function(cb) { return cb.checked; }).map(function(cb) { return cb._book; });
   if (picked.length) {
     draft.pendingWb = { entries: picked.map(function(b) {
-      var e = { name: String(b.name || '未命名').slice(0, 60), content: String(b.content || ''), pos: 'auto',
+      var e = { name: String(b.name || '未命名').slice(0, 60), content: String(b.content || ''), pos: 'before',
         keywords: b.alwaysOn ? '' : Array.isArray(b.keywords) ? b.keywords.join(',') : (typeof b.keywords === 'string' ? b.keywords : ''),
         folderName: String(b.category || '').trim() || '来自小手机' };
       if (b.disabled) e.enabled = false;

@@ -18,58 +18,62 @@
     crAlbumFileInput.addEventListener('change', function() { sendPickedImage(this.files); });   // 能多选
   }
 })();
-// 选好（或拍好）的照片：先在小手机里看一眼再发（用户要的）；相册能多选（最多 9 张），点缩略图看大图，右上角勾选决定发送哪些
-// 和回车一样，只发自己的，不叫 AI
-var PICK_MAX = 9;
-function confirmPickedImage(srcs, onSend) {
-  if (typeof srcs === 'string') srcs = [srcs];
-  var on = srcs.map(function() { return true; });
+var CHAT_PHOTO_LIMIT = 14;
+// 设备相册选超了，回到小手机确认要发的图片。
+function confirmPickedImages(items, onSend) {
+  var srcs = items.map(function(item) { return URL.createObjectURL(item.file); });
+  var selected = new Set(items.slice(0, CHAT_PHOTO_LIMIT));
   var ov = document.createElement('div');
   ov.className = 'mine-acc-overlay open';
   ov.style.zIndex = '2600';
-  var one = srcs.length === 1;
-  ov.innerHTML = '<div class="mine-acc-modal pick-modal">' + (one ? '' : '<div class="mine-acc-title pick-title"></div>') +
-    '<div class="' + (one ? 'pick-one' : 'pick-grid') + '"></div>' +
+  ov.innerHTML = '<div class="mine-acc-modal pick-modal"><div class="mine-acc-title pick-title"></div>' +
+    '<div class="pick-hint" role="status"></div><div class="pick-grid"></div>' +
     '<div class="mine-acc-actions"><button class="mine-acc-btn mine-acc-btn-close">取消</button><button class="mine-acc-btn mine-acc-btn-add">发送</button></div></div>';
-  var grid = ov.querySelector(one ? '.pick-one' : '.pick-grid'), sendBtn = ov.querySelector('.mine-acc-btn-add');
+  var grid = ov.querySelector('.pick-grid'), sendBtn = ov.querySelector('.mine-acc-btn-add');
+  var checks = [];
   var sync = function() {
-    var n = on.filter(Boolean).length;
-    if (!one) ov.querySelector('.pick-title').textContent = '选了 ' + n + ' 张' + (srcs.length > n ? '（共 ' + srcs.length + ' 张）' : '');
-    sendBtn.textContent = one ? '发送' : '发送（' + n + '）';
+    var n = selected.size;
+    ov.querySelector('.pick-title').textContent = '已选 ' + n + ' / ' + CHAT_PHOTO_LIMIT + ' 张';
+    ov.querySelector('.pick-hint').textContent = n === CHAT_PHOTO_LIMIT
+      ? '相册选了 ' + items.length + ' 张，取消一张可换选'
+      : '一次最多发送 ' + CHAT_PHOTO_LIMIT + ' 张';
+    checks.forEach(function(mark, index) {
+      var on = selected.has(items[index]);
+      mark.setAttribute('aria-pressed', String(on));
+      mark.parentElement.classList.toggle('on', on);
+      mark.disabled = !on && n >= CHAT_PHOTO_LIMIT;
+    });
+    sendBtn.textContent = '发送（' + n + '）';
     sendBtn.disabled = !n;
   };
   srcs.forEach(function(src, i) {
     var cell = document.createElement('div');
-    cell.className = 'pick-cell on';
+    cell.className = 'pick-cell';
     var view = document.createElement('button');
     view.type = 'button';
     view.className = 'pick-zoom';
     view.setAttribute('aria-label', '预览第 ' + (i + 1) + ' 张图片');
     var img = document.createElement('img');
-    img.src = src; img.alt = '';
+    img.src = src; img.alt = ''; img.loading = 'lazy';
     view.appendChild(img);
     view.addEventListener('click', function() { openImgViewer(src, { preview: true }); });
     cell.appendChild(view);
-    if (!one) {
-      var mark = document.createElement('button');
-      mark.type = 'button';
-      mark.className = 'pick-check';
-      mark.setAttribute('aria-label', '选择第 ' + (i + 1) + ' 张图片');
-      mark.setAttribute('aria-pressed', 'true');
-      mark.addEventListener('click', function() {
-        on[i] = !on[i];
-        mark.setAttribute('aria-pressed', String(on[i]));
-        cell.classList.toggle('on', on[i]);
-        sync();
-      });
-      cell.appendChild(mark);
-    }
+    var mark = document.createElement('button');
+    mark.type = 'button';
+    mark.className = 'pick-check';
+    mark.setAttribute('aria-label', '选择第 ' + (i + 1) + ' 张图片');
+    mark.addEventListener('click', function() {
+      if (!selected.delete(items[i]) && selected.size < CHAT_PHOTO_LIMIT) selected.add(items[i]);
+      sync();
+    });
+    checks.push(mark);
+    cell.appendChild(mark);
     grid.appendChild(cell);
   });
   sync();
-  var close = function() { ov.remove(); };
+  var close = function() { ov.remove(); srcs.forEach(function(src) { URL.revokeObjectURL(src); }); };
   ov.querySelector('.mine-acc-btn-close').addEventListener('click', close);
-  sendBtn.addEventListener('click', function() { close(); onSend(srcs.filter(function(_, i) { return on[i]; })); });
+  sendBtn.addEventListener('click', function() { close(); onSend(items.filter(function(item) { return selected.has(item); })); });
   ov.addEventListener('click', function(e) { if (e.target === ov) close(); });
   (document.querySelector('.phone') || document.body).appendChild(ov);
 }
@@ -116,60 +120,69 @@ function renderPhotoRetry(batch, list) {
   if (list && batch.notice.parentNode !== list) list.appendChild(batch.notice);
 }
 
-function sendPhotoBatch(batch) {
+async function sendPhotoBatch(batch) {
   if (batch.busy) return;
   batch.busy = true;
   if (batch.notice) renderPhotoRetry(batch);
-  Promise.allSettled(batch.pending.map(function(item) { return readChatPhoto(item.file); })).then(function(results) {
-    batch.busy = false;
-    var histories = batch.subview === 'contacts' ? dramaHistories : chatHistories;
-    if (findCharIdx(batch.char.id) < 0 || histories[batch.char.id] !== batch.hist) {
-      forgetPhotoBatch(batch);
-      return;
-    }
-    var list = appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === batch.char && currentCrSubView === batch.subview
-      ? getActiveMsgListEl() : null;
-    var photos = [];
-    batch.pending = batch.pending.filter(function(item, i) {
-      if (results[i].status === 'rejected') return true;
-      photos.push(results[i].value);
-      return false;
-    });
-    if (batch.notice) batch.notice.remove();
-    if (photos.length) {
-      var message = { role: 'user', content: photos.length > 1 ? '[图片消息 · ' + photos.length + ' 张]' : '[图片消息]',
-        imgSrc: photos[0].src, time: Date.now() };
-      if (photos.length > 1) message.images = photos;
-      if (batch.quote) {
-        message.quote = batch.quote;
-        if (list && pendingQuote === batch.quote) clearQuote();
-        var draft = crDrafts[batch.char.id + ':' + batch.subview];
-        if (draft && draft.quote === batch.quote) draft.quote = null;
-        batch.quote = null;
-      }
-      batch.hist.push(message);
-      if (list) renderHistMsg(message, list);
-      saveHistories();
-    }
-    if (batch.pending.length) {
-      var batches = pendingChatPhotos.get(batch.hist);
-      if (!batches) pendingChatPhotos.set(batch.hist, batches = new Set());
-      batches.add(batch);
-      renderPhotoRetry(batch, list);
-      if (list) crStick(list);
-    } else forgetPhotoBatch(batch);
+  // 限制同时解码的原图数量，避免手机一次处理太多大图。
+  var results = [];
+  for (var i = 0; i < batch.pending.length; i += 3) {
+    var chunk = batch.pending.slice(i, i + 3);
+    results.push.apply(results, await Promise.allSettled(chunk.map(function(item) { return readChatPhoto(item.file); })));
+  }
+  batch.busy = false;
+  var histories = batch.subview === 'contacts' ? dramaHistories : chatHistories;
+  if (findCharIdx(batch.char.id) < 0 || histories[batch.char.id] !== batch.hist) {
+    forgetPhotoBatch(batch);
+    return;
+  }
+  var list = appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === batch.char && currentCrSubView === batch.subview
+    ? getActiveMsgListEl() : null;
+  var photos = [];
+  batch.pending = batch.pending.filter(function(item, i) {
+    if (results[i].status === 'rejected') return true;
+    photos.push(results[i].value);
+    return false;
   });
+  if (batch.notice) batch.notice.remove();
+  if (photos.length) {
+    var message = { role: 'user', content: photos.length > 1 ? '[图片消息 · ' + photos.length + ' 张]' : '[图片消息]',
+      imgSrc: photos[0].src, time: Date.now() };
+    if (photos.length > 1) message.images = photos;
+    if (batch.quote) {
+      message.quote = batch.quote;
+      if (list && pendingQuote === batch.quote) clearQuote();
+      var draft = crDrafts[batch.char.id + ':' + batch.subview];
+      if (draft && draft.quote === batch.quote) draft.quote = null;
+      batch.quote = null;
+    }
+    batch.hist.push(message);
+    if (list) renderHistMsg(message, list);
+    saveHistories();
+  }
+  if (batch.pending.length) {
+    var batches = pendingChatPhotos.get(batch.hist);
+    if (!batches) pendingChatPhotos.set(batch.hist, batches = new Set());
+    batches.add(batch);
+    renderPhotoRetry(batch, list);
+    if (list) crStick(list);
+  } else forgetPhotoBatch(batch);
 }
 
 function sendPickedImage(files) {
   if (!files || openingChatCharIdx === -1) return;
   var char = charList[openingChatCharIdx];
   if (!char) return;
-  var list = Array.prototype.slice.call(files.length !== undefined ? files : [files], 0, PICK_MAX);
+  var list = Array.from(files.length !== undefined ? files : [files]);
   if (!list.length) return;
-  if (files.length > PICK_MAX) showToast('一次最多发送前 ' + PICK_MAX + ' 张', 'plain');
   var pending = list.map(function(file, i) { return { file: file, number: i + 1 }; });
-  sendPhotoBatch({ char: char, subview: currentCrSubView, hist: getActiveHistory(openingChatCharIdx), quote: pendingQuote, pending: pending });
+  var batch = { char: char, subview: currentCrSubView, hist: getActiveHistory(openingChatCharIdx), quote: pendingQuote };
+  function send(items) {
+    batch.pending = items;
+    sendPhotoBatch(batch);
+  }
+  if (pending.length > CHAT_PHOTO_LIMIT) confirmPickedImages(pending, send);
+  else send(pending);
 }
 
 (function() {
@@ -216,9 +229,9 @@ function sendPickedImage(files) {
           closeCrPlusPanel();
           openPeek(openingChatCharIdx);
         } else if (funcName === '提示词' && typeof openPromptPreview === 'function') {
-          // 看这次会发给 TA 什么：直接打开当前这个角色、当前这个窗口的，先显示精简版
+          // 预览当前窗口的提示词。
           closeCrPlusPanel();
-          openPromptPreview({ charId: charList[openingChatCharIdx] && charList[openingChatCharIdx].id, view: currentCrSubView === 'contacts' ? 'drama' : 'chat', compact: true });
+          openPromptPreview();
         } else if (funcName === '一起看' && typeof openTogether === 'function') {
           closeCrPlusPanel();
           openTogether(openingChatCharIdx);

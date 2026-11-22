@@ -321,13 +321,31 @@ function renderStEntryList() {
   var grouped = names.length > 0 && !stEntriesFlat;
   var view = document.getElementById('stEntryView');
   view.hidden = !names.length;
-  view.textContent = grouped ? '单列排序' : '按分组看';
+  view.textContent = grouped ? '按顺序看' : '按分组看';
   var groupedEntries = new Map();
   names.forEach(function(name) { groupedEntries.set(name, []); });
   cur.entries.forEach(function(entry) {
     if (groupedEntries.has(entry.folder)) groupedEntries.get(entry.folder).push(entry);
   });
   var targets = grouped ? renderStFolderSections(cur, groupedEntries) : new Map();
+  var positions = new Map();
+  if (!grouped) {
+    var order = cur.entries.some(function(entry) { return promptDepth(entry.depth) !== undefined; }) ? ['before', 'depth', 'after'] : ['before', 'after'];
+    order.forEach(function(pos, index) {
+      if (index === 1) {
+        var divider = document.createElement('div');
+        divider.className = 'st-history-divider';
+        divider.textContent = '聊天记录';
+        stEntryList.appendChild(divider);
+      }
+      var zone = document.createElement('div');
+      zone.className = 'st-position-zone';
+      zone.dataset.promptDropGroup = pos;
+      zone.dataset.emptyText = pos === 'before' ? '记录前暂无条目' : pos === 'after' ? '记录后暂无条目' : '';
+      stEntryList.appendChild(zone);
+      positions.set(pos, zone);
+    });
+  }
   var loose = stEntryList;
   if (grouped) {
     loose = document.createElement('div');
@@ -347,13 +365,21 @@ function renderStEntryList() {
     card.dataset.promptDropEntry = '';
     card._promptEntry = entry;
     promptDragGrip(card, stEntryList, function(folder, target, after) {
-      if (!grouped && !target) return;
-      if (!movePromptEntry(cur.entries, entry, target, after, function(item) { return (item.folder || '') === folder; })) return;
+      if (!grouped && !positions.has(folder)) return;
+      if (!grouped && folder === 'depth' && !target && stEntryPosition(entry) !== 'depth') return;
+      if (!movePromptEntry(cur.entries, entry, target, after, function(item) {
+        return grouped ? (item.folder || '') === folder : stEntryPosition(item) === folder;
+      })) return;
       if (grouped) {
         if (folder) entry.folder = folder;
         else delete entry.folder;
         var closed = stClosedFolders.get(cur);
         if (closed) closed.delete(folder);
+      } else if (folder === 'depth') {
+        if (target) entry.depth = target.depth;
+      } else {
+        entry.pos = folder;
+        delete entry.depth;
       }
       saveStPresetsToStorage();
       renderStEntryList();
@@ -375,7 +401,8 @@ function renderStEntryList() {
       folderBadge.textContent = entry.folder;
       title.appendChild(folderBadge);
     }
-    if (entry.pos === 'after') { var pb = document.createElement('span'); pb.className = 'st-pos-badge'; pb.textContent = '记录后'; title.appendChild(pb); }
+    var depth = promptDepth(entry.depth);
+    if (depth !== undefined || entry.pos === 'after') { var pb = document.createElement('span'); pb.className = 'st-pos-badge'; pb.textContent = depth === undefined ? '记录后' : '深度 ' + depth; title.appendChild(pb); }
     var preview = document.createElement('div');
     preview.className = 'st-entry-preview';
     preview.textContent = entry.content || '（空内容）';
@@ -409,9 +436,11 @@ function renderStEntryList() {
     card.appendChild(badge);
     card.appendChild(main);
     card.appendChild(toggleLabel);
-    (targets.get(entry.folder) || loose).appendChild(card);
+    (grouped ? targets.get(entry.folder) || loose : positions.get(stEntryPosition(entry))).appendChild(card);
   });
 }
+
+function stEntryPosition(entry) { return promptDepth(entry.depth) !== undefined ? 'depth' : entry.pos === 'after' ? 'after' : 'before'; }
 
 stPresetSelectBox.addEventListener('click', function(e) {
   e.stopPropagation();
@@ -518,13 +547,7 @@ stPresetDelBtn.addEventListener('click', function(e) {
   });
 });
 
-var stEntryPosRow = document.getElementById('stEntryPosRow');
-stEntryPosRow.querySelectorAll('.pf-radio-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    stEntryPosRow.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.remove('selected'); });
-    this.classList.add('selected');
-  });
-});
+var stPositionPicker = createPromptPositionPicker(document.getElementById('stEntryPosRow'));
 stEntryRoleRow.querySelectorAll('.pf-radio-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
     stEntryRoleRow.querySelectorAll('.pf-radio-btn').forEach(function(b) {
@@ -552,10 +575,10 @@ function openStEntryDetail(idx) {
     stEntryRoleRow.querySelectorAll('.pf-radio-btn').forEach(function(b) {
       b.classList.toggle('selected', b.dataset.role === r);
     });
-    stEntryPosRow.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b.dataset.pos === (entry.pos === 'after' ? 'after' : 'before')); });
+    stPositionPicker.set(entry.pos === 'after' ? 'after' : 'before', entry.depth);
     stEntryDetailDelete.classList.remove('hidden');
   } else {
-    stEntryPosRow.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b.dataset.pos === 'before'); });
+    stPositionPicker.set('before');
     stEntryDetailTitle.textContent = '新建提示词条目';
     stEntryNameInput.value = '';
     stEntryContentInput.value = '';
@@ -583,8 +606,7 @@ stEntryDetailSave.addEventListener('click', function() {
   var selectedRoleBtn = stEntryRoleRow.querySelector('.pf-radio-btn.selected');
   var role = selectedRoleBtn ? selectedRoleBtn.dataset.role : 'system';
   var content = stEntryContentInput.value.trim();
-  var posBtn = stEntryPosRow.querySelector('.pf-radio-btn.selected');
-  var pos = posBtn && posBtn.dataset.pos === 'after' ? 'after' : 'before';
+  var pos = stPositionPicker.pos, depth = stPositionPicker.depth;
   var folder = document.getElementById('stEntryFolder').value;
 
   if (stEditingEntryIdx >= 0 && cur.entries[stEditingEntryIdx]) {
@@ -593,6 +615,7 @@ stEntryDetailSave.addEventListener('click', function() {
     cur.entries[stEditingEntryIdx].content = content;
     var entry = cur.entries[stEditingEntryIdx];
     entry.pos = pos;
+    if (depth === undefined) delete entry.depth; else entry.depth = depth;
     if (folder) entry.folder = folder; else delete entry.folder;
     var target = stPresets[Number(stEntryPreset.value)];
     if (target && target !== cur) {
@@ -604,6 +627,7 @@ stEntryDetailSave.addEventListener('click', function() {
     }
   } else {
     var added = { name: name, role: role, enabled: true, content: content, pos: pos };
+    if (depth !== undefined) added.depth = depth;
     if (folder) added.folder = folder;
     cur.entries.push(added);
   }
@@ -688,7 +712,7 @@ function renderPlotCard(cur) {
   });
   var tip = document.createElement('div');
   tip.className = 'auto-hint';
-  tip.textContent = '点一下就换成那段写法，下面对应的条目跟着变；想自己改字就点进条目里改（再点这里的选项会被换回来）。标着「记录后」的条目放在聊天记录后面，离回复最近，字数、人称、不抢话这类放在那里最管用。';
+  tip.textContent = '点一下就换成那段写法，下面对应的条目跟着变；想自己改字就点进条目里改（再点这里的选项会被换回来）。在「按顺序看」里，拖过聊天记录分界线就能改变条目的发送位置。';
   card.appendChild(tip);
 }
 
@@ -705,7 +729,7 @@ function stPresetFromJson(json, fallbackName) {
   if (!Array.isArray(json.prompts)) {
     if (Array.isArray(json.entries)) {
       return { name: json.name || fallbackName, folders: Array.isArray(json.folders) ? json.folders : [], entries: json.entries.map(function(e) {
-        return { name: e.name || '未命名条目', role: toRole(e.role), enabled: e.enabled !== false, content: String(e.content || ''), pos: e.pos === 'after' ? 'after' : 'before', folder: typeof e.folder === 'string' ? e.folder : undefined };
+        return { name: e.name || '未命名条目', role: toRole(e.role), enabled: e.enabled !== false, content: String(e.content || ''), pos: e.pos === 'after' ? 'after' : 'before', folder: typeof e.folder === 'string' ? e.folder : undefined, depth: promptDepth(e.depth) };
       }) };
     }
     throw new Error('不是酒馆的对话补全预设（找不到 prompts）');
@@ -744,7 +768,8 @@ function stPresetFromJson(json, fallbackName) {
     var prefix = /^(?:〖([^〗]+)〗|【([^】]+)】)\s*\S/.exec(name);
     var folder = explicit || (prefix && (prefix[1] || prefix[2]).trim()) || section;
     if (folder) grouping.folders.add(folder);
-    entries.push({ name: name, role: toRole(p.role), enabled: x.enabled, content: content, pos: afterHist ? 'after' : 'before', folder: folder || undefined });
+    entries.push({ name: name, role: toRole(p.role), enabled: x.enabled, content: content, pos: afterHist ? 'after' : 'before', folder: folder || undefined,
+      depth: Number(p.injection_position) === 1 ? promptDepth(p.injection_depth) : undefined });
   });
   if (!entries.length) throw new Error('预设里没有可用的提示词条目');
   return { name: fallbackName, entries: entries, folders: Array.from(grouping.folders) };

@@ -69,6 +69,67 @@ updateFolderBodyRadius();
   });
 })();
 
+function promptDepth(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return undefined;
+  var depth = Number(value);
+  return Number.isSafeInteger(depth) && depth >= 0 ? depth : undefined;
+}
+
+function createPromptPositionPicker(row) {
+  var buttons = row.querySelectorAll('button');
+  var toggle = row.querySelector('[data-pos="depth"]');
+  var panel = document.createElement('div');
+  panel.className = 'prompt-depth-panel';
+  panel.hidden = true;
+  var choices = document.createElement('div');
+  choices.className = 'pf-radio-row';
+  var hint = document.createElement('div');
+  hint.className = 'prompt-depth-hint';
+  hint.textContent = '0 在最后，数字越小位置越近';
+  panel.append(choices, hint);
+  row.after(panel);
+
+  var state = {
+    pos: 'before',
+    depth: undefined,
+    set: function(pos, depth) {
+      state.pos = pos;
+      state.depth = promptDepth(depth);
+      setOpen(false);
+      paint();
+    }
+  };
+  function setOpen(open) {
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  }
+  function paint() {
+    var selected = state.depth === undefined ? state.pos : 'depth';
+    buttons.forEach(function(b) { b.classList.toggle('selected', b.dataset.pos === selected); });
+    toggle.textContent = state.depth === undefined ? '深度' : '深度 ' + state.depth;
+    var depths = [0, 1, 2, 3, 4];
+    if (state.depth > 4) depths.push(state.depth);
+    choices.replaceChildren();
+    depths.forEach(function(depth) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'pf-radio-btn' + (depth === state.depth ? ' selected' : '');
+      chip.textContent = depth;
+      chip.setAttribute('aria-label', '深度 ' + depth);
+      chip.addEventListener('click', function() { state.set(state.pos, depth); toggle.focus(); });
+      choices.append(chip);
+    });
+  }
+  buttons.forEach(function(button) {
+    button.addEventListener('click', function() {
+      if (button === toggle) { setOpen(panel.hidden); return; }
+      state.set(button.dataset.pos);
+    });
+  });
+  paint();
+  return state;
+}
+
 function movePromptEntry(items, entry, target, after, belongs) {
   var from = items.indexOf(entry);
   if (from < 0 || entry === target) return false;

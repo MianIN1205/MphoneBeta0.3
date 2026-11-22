@@ -69,14 +69,13 @@ function cardToDraft(card, avatar) {
   if (book && Array.isArray(book.entries)) {
     book.entries.forEach(function(e) {
       if (!e || !e.content) return;
-      // 位置：角色描述前后 → 前；作者注释 → 中；按深度插入聊天记录 → 后
-      var ext = (e.extensions && e.extensions.position);
-      var pos = ext === 4 ? 'after' : (ext === 2 || ext === 3) ? 'middle' : 'before';
+      var placement = wbImportedPlacement(e);
       pendingEntries.push({
         name: e.comment || e.name || (e.keys && e.keys[0]) || '导入条目',
         keywords: (e.constant ? '' : (e.keys || []).join(',')),
         content: e.content,
-        pos: pos,
+        pos: placement.pos,
+        depth: placement.depth,
         enabled: e.enabled !== false
       });
     });
@@ -142,8 +141,9 @@ function charToCard(c) {
   var data = { name: c.charName || c.charAlias || '角色', description: desc, personality: '', scenario: '', first_mes: ops[0] || '', mes_example: '',
     creator_notes: '从眠花糖机导出', system_prompt: '', post_history_instructions: '', alternate_greetings: ops.slice(1), tags: [], creator: '', character_version: '', extensions: {} };
   if (entries.length) data.character_book = { name: data.name, entries: entries.map(function(e, i) {
-    var keys = String(e.keywords || '').split(/[,，、]/).map(function(k) { return k.trim(); }).filter(Boolean), pos = wbResolvePos(e);
-    return { keys: keys, content: e.content || '', extensions: { position: pos === 'after' ? 4 : pos === 'middle' ? 2 : 0 }, enabled: e.enabled !== false,
+    var keys = String(e.keywords || '').split(/[,，、]/).map(function(k) { return k.trim(); }).filter(Boolean);
+    var depth = promptDepth(e.depth);
+    return { keys: keys, content: e.content || '', extensions: { position: e.pos === 'after' || depth !== undefined ? 4 : 0, depth: depth }, enabled: e.enabled !== false,
       insertion_order: i, constant: !keys.length, comment: e.name || '', name: e.name || '', id: i };
   }) };
   return { spec: 'chara_card_v2', spec_version: '2.0', data: data };

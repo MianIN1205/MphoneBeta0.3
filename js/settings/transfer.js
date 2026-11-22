@@ -72,7 +72,7 @@ function xfFromUwu(scan, file) {
   Object.keys(by).forEach(function(k) { r.books.push({ name: k, entries: by[k] }); });
   return r;
 }
-function xfUwuEntry(x) { return { name: String(x.name || '未命名').slice(0, 60), content: String(x.content), keywords: x.alwaysOn ? '' : wbImpKeys(x.keywords), pos: 'auto', enabled: !x.disabled }; }
+function xfUwuEntry(x) { return { name: String(x.name || '未命名').slice(0, 60), content: String(x.content), keywords: x.alwaysOn ? '' : wbImpKeys(x.keywords), pos: 'before', enabled: !x.disabled }; }
 function xfFromCard(card, avatar) {
   var d = cardToDraft(card, avatar || '');
   return { name: d.charName, persona: d.charPersona, avatar: d.charAvatar, openings: d.openings, msgs: [], mems: [],
@@ -111,9 +111,10 @@ function xfScan(root, r) {
     }
     if (isEntry(v, key)) {
       var box = wbBox.get(holder) || { name: ctx, entries: [], owner: owner };
+      var placement = wbImportedPlacement(v);
       box.entries.push({ name: String(v.comment || v.name || v.title || (Array.isArray(v.keys) && v.keys[0]) || '导入条目').slice(0, 60),
         keywords: v.constant || v.alwaysOn ? '' : wbImpKeys(v.keys || v.key || v.keywords || v.keyword), content: String(v.content),
-        pos: typeof v.position === 'number' ? wbImpStPos(v.position) : 'auto', enabled: !(v.disable || v.disabled || v.enabled === false), cat: v.category });
+        pos: placement.pos, depth: placement.depth, enabled: !(v.disable || v.disabled || v.enabled === false), cat: v.category });
       wbBox.set(holder, box);
       return;
     }

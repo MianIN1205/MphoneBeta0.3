@@ -31,7 +31,7 @@ function historyReadParts(message, tool, cfg, query) {
     return parts;
   }
   if (message.imgSrc && mediaCfg.vision && llmCaps(cfg).image) {
-    (message.images && message.images.length ? message.images : [{ src: message.imgSrc }]).slice(0, 9).forEach(function(photo, index) {
+    (message.images && message.images.length ? message.images : [{ src: message.imgSrc }]).slice(0, CHAT_PHOTO_LIMIT).forEach(function(photo, index) {
       parts.push({ type: 'text', text: '第 ' + (index + 1) + ' 张原图' }, { type: 'image_url', image_url: { url: photo.src } });
     });
     var notes = historyPhotoText(message);
@@ -147,7 +147,7 @@ function withChatHistoryReads(msgs, records, cfg, session, query) {
   });
   var index = msgs.length;
   for (var i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role === 'user') { index = i; break; }
+    if (msgs[i].role === 'user' && msgs[i].promptDepth === undefined) { index = i; break; }
   }
   return msgs.slice(0, index).concat({ role: 'user', content: parts }, msgs.slice(index));
 }

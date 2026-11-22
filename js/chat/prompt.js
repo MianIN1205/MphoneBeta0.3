@@ -393,9 +393,23 @@ var WB_WRAP = '【背景设定】下面是这个世界、地点、人物和事�
 // 世界书里标成「写法要求」的条目：是要照着做的规矩，不是背景，单独一段放在聊天记录后面
 var WB_RULE_WRAP = '【写法要求】下面几条是这次回复要照着做的写法要求，和回复格式一起遵守。照做就好，不要在回复里提到这些要求。';
 
-function buildMsgs(idx, histOverride, historySession) {
+function placePromptDepth(history, entries, preview) {
+  var at = new Map(), out = [];
+  entries.forEach(function(m) {
+    var index = Math.max(0, history.length - m.promptDepth);
+    if (!at.has(index)) at.set(index, []);
+    at.get(index).push(preview ? Object.assign({}, m, { previewZone: m.promptDepth === 0 ? 'after' : 'history' }) : m);
+  });
+  for (var i = 0; i <= history.length; i++) {
+    if (at.has(i)) out.push.apply(out, at.get(i));
+    if (i < history.length) out.push(preview ? Object.assign({}, history[i], { previewZone: 'history' }) : history[i]);
+  }
+  return out;
+}
+
+function buildMsgs(idx, histOverride, historySession, preview) {
   var char = charList[idx] || {};
-  if (char.isGroup && typeof buildGroupMsgs === 'function') return buildGroupMsgs(char, histOverride || getActiveHistory(idx));   // 群聊（js/chat/group.js）
+  if (char.isGroup && typeof buildGroupMsgs === 'function') return buildGroupMsgs(char, histOverride || getActiveHistory(idx), preview);   // 群聊（js/chat/group.js）
   var sys  = (document.getElementById('systemPromptTA') ? document.getElementById('systemPromptTA').value.trim() : '');
   var extra = '';
   var fixed = char.builtinAssistant && typeof MIANIN_PERSONA !== 'undefined';   // MianIN：名字和人设固定（见 js/char/assistant.js）
@@ -415,7 +429,7 @@ function buildMsgs(idx, histOverride, historySession) {
   var impression = impressionFor(char.userImpressions, acc.uid);
   if (impression)        extra += '你对用户的特别印象 / 设定：\n' + impression + '\n';
   var sysContent = (MPHONE_FICTION_NOTE + (sys ? '\n\n' + sys : '') + (extra ? '\n\n【你和{{user}}的资料】\n' + extra : '')).trim();
-  var msgs = sysContent ? [{ role: 'system', content: sysContent }] : [];
+  var msgs = sysContent ? [{ role: 'system', content: sysContent, previewLabel: '系统提示词与角色资料' }] : [];
   // 系统内置助手：应用说明 + 已开启的权限
   var assistantSys = (typeof assistantPrompt === 'function') ? assistantPrompt(char) : '';
   if (assistantSys) msgs.push({ role: 'system', content: assistantSys });
@@ -472,19 +486,23 @@ function buildMsgs(idx, histOverride, historySession) {
   var memSys = (typeof memoryContextFor === 'function') ? memoryContextFor(char, history) : '';
   if (memSys) msgs.push({ role: 'system', content: memSys });
 
-  // 世界书：按注入位置分组（前 = 紧跟系统提示，中 = 预设条目之后，后 = 聊天记录之后；自动见 wbResolvePos）
+  // 世界书依条目的位置排在聊天记录前、后，或按深度插入。
   // 同一个位置的合成一段「背景设定」，并说清楚这是心里知道的背景：不复述、不反复提、不说「设定」「世界书」
-  var wbGroups = { before: [], middle: [], after: [] }, wbRules = [];
+  var wbGroups = { before: [], after: [] }, wbRules = { before: [], after: [] }, depthEntries = [];
   getActiveWbEntries(char, history, isDrama).forEach(function(e) {
-    if (e.rule) { wbRules.push('【' + e.name + '】\n' + e.content); return; }
-    var p = typeof wbResolvePos === 'function' ? wbResolvePos(e) : (e.pos || 'before');
-    (wbGroups[p] || wbGroups.before).push('【' + e.name + '】\n' + e.content);
+    var depth = promptDepth(e.depth);
+    if (depth !== undefined) {
+      depthEntries.push({ role: 'system', content: (e.rule ? WB_RULE_WRAP : WB_WRAP) + '\n\n【' + e.name + '】\n' + e.content,
+        previewLabel: e.name, promptDepth: depth });
+      return;
+    }
+    (e.rule ? wbRules : wbGroups)[wbPosition(e.pos)].push('【' + e.name + '】\n' + e.content);
   });
   var wbByPos = {};
   Object.keys(wbGroups).forEach(function(p) {
-    wbByPos[p] = wbGroups[p].length ? [{ role: 'system', content: WB_WRAP + '\n\n' + wbGroups[p].join('\n\n') }] : [];
+    wbByPos[p] = wbGroups[p].length ? [{ role: 'system', content: WB_WRAP + '\n\n' + wbGroups[p].join('\n\n'), previewLabel: '世界书背景' }] : [];
+    if (wbRules[p].length) wbByPos[p].push({ role: 'system', content: WB_RULE_WRAP + '\n\n' + wbRules[p].join('\n\n'), previewLabel: '世界书写法要求' });
   });
-  var wbRuleMsg = wbRules.length ? [{ role: 'system', content: WB_RULE_WRAP + '\n\n' + wbRules.join('\n\n') }] : [];
   msgs = msgs.concat(wbByPos.before);
 
   // 注入当前预设中已启用的提示词条目（按条目各自的 role 身份发送）。预设只给剧情窗口用（用户定的）：聊天窗口和各种活动只用世界书
@@ -495,11 +513,12 @@ function buildMsgs(idx, histOverride, historySession) {
     curPreset.entries.forEach(function(entry) {
       if (entry && entry.enabled && entry.content && entry.content.trim()) {
         var r = (entry.role === 'user' || entry.role === 'assistant') ? entry.role : 'system';
-        (entry.pos === 'after' ? presetAfter : msgs).push({ role: r, content: entry.content.trim() });
+        var depth = promptDepth(entry.depth);
+        var target = depth !== undefined ? depthEntries : entry.pos === 'after' ? presetAfter : msgs;
+        target.push({ role: r, content: entry.content.trim(), previewLabel: entry.name || '剧情预设条目', promptDepth: depth });
       }
     });
   }
-  msgs = msgs.concat(wbByPos.middle);
 
 
   var rawHist = history.map(function(m, i) {
@@ -527,7 +546,19 @@ function buildMsgs(idx, histOverride, historySession) {
   var fill = function(m) { return typeof m.content === 'string' ? { role: m.role, content: fillMacros(m.content, char) } : m; };
   // 用户发来的文件：全文单独一段放在聊天记录前面（不替换 {{user}} 这些，原样给）
   var fileSys = (typeof filesContextFor === 'function') ? filesContextFor(history) : null;
-  return msgs.map(fill).concat(fileSys ? [fileSys] : [], rawHist, wbByPos.after.map(fill), wbRuleMsg.map(fill), presetAfter.map(fill));
+  var inHistory = placePromptDepth(rawHist, depthEntries.map(function(m) {
+    return Object.assign(fill(m), { promptDepth: m.promptDepth }, preview ? { previewLabel: m.previewLabel } : {});
+  }), preview);
+  if (preview) {
+    function section(parts, zone) {
+      return parts.map(function(part) {
+        return Object.assign({}, zone === 'history' || part === fileSys ? part : fill(part), { previewZone: zone, previewLabel: part.previewLabel });
+      });
+    }
+    return section(msgs.concat(fileSys ? [fileSys] : []), 'before').concat(
+      inHistory, section(wbByPos.after.concat(presetAfter), 'after'));
+  }
+  return msgs.map(fill).concat(fileSys ? [fileSys] : [], inHistory, wbByPos.after.map(fill), presetAfter.map(fill));
 }
 
 // 发给 AI / 用于总结的消息文字：撤回的只告诉它「撤回了一条消息」，引用的附上引用内容

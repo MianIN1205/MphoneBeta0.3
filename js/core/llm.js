@@ -60,6 +60,7 @@ function voiceTextForAI(transcript, status) {
 
 function llmPrepare(msgs, cfg, caps) {
   var out = [];
+  var strict = llmStrict(cfg);
   JSON.parse(JSON.stringify(msgs)).forEach(function(m) {
     var c = m.content;
     if (Array.isArray(c)) {
@@ -71,9 +72,12 @@ function llmPrepare(msgs, cfg, caps) {
       if (c.every(function(p) { return p.type === 'text'; })) c = partsText(c);
     }
     if (Array.isArray(c) ? !c.length : !String(c || '').trim()) return;
-    out.push({ role: m.role, content: c });
+    // 严格接口会把系统消息统一提到开头。深度条目改用带标记的用户消息，保留插入点。
+    if (strict && m.role === 'system' && Number.isInteger(m.promptDepth)) {
+      out.push({ role: 'user', content: '【插入提示】\n' + partsText(c) });
+    } else out.push({ role: m.role, content: c });
   });
-  if (!llmStrict(cfg)) return { system: '', messages: out };
+  if (!strict) return { system: '', messages: out };
 
   // 严格模式：所有系统提示合成一条；连续同角色合并；第一条和最后一条都是用户
   var sys = [], rest = [];

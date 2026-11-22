@@ -56,7 +56,7 @@ function groupNowText() {
 function groupFill(g, text) {
   return fillMacros(text, { charAlias: groupMembers(g).map(groupLabel).join('、'), userAccountUid: g.userAccountUid });
 }
-function buildGroupMsgs(g, history) {
+function buildGroupMsgs(g, history, preview) {
   var members = groupMembers(g), acc = resolveCharAccount(g);
   var sys = document.getElementById('systemPromptTA') ? document.getElementById('systemPromptTA').value.trim() : '';
   var roster = members.map(function(c) {
@@ -80,13 +80,21 @@ function buildGroupMsgs(g, history) {
     '\n\n【群成员的资料】\n' + roster + (userInfo ? '\n\n【{{user}}的资料】\n' + userInfo : '')) });
   // 世界书：按「是谁的」分开放（用户问过不适合某个角色怎么办）：所有成员都关联的是大家的背景；
   // 只有部分人关联的标明只和 TA 们有关，别的角色不知道、不用。同一条只放一次
-  var seen = {}, wbList = [], ruleSeen = {}, wbRuleList = [];
+  var seen = {}, wbList = [], ruleSeen = {}, wbRuleList = [], depthEntries = [], wbAfter = [];
   [g].concat(members).forEach(function(c) {   // 群自己关联的（便捷拓展栏里选的）算大家都知道
     if (typeof getActiveWbEntries !== 'function') return;
     getActiveWbEntries(c, history, false).forEach(function(e) {
       var k = e.id || (e.name + '\n' + e.content);
-      if (e.rule) { if (!ruleSeen[k]) { ruleSeen[k] = 1; wbRuleList.push('【' + e.name + '】\n' + e.content); } return; }   // 写法要求：不算背景，单独一段
-      if (!seen[k]) { seen[k] = { text: '【' + e.name + '】\n' + e.content, owners: [] }; wbList.push(seen[k]); }
+      var depth = promptDepth(e.depth);
+      if (e.rule) {
+        if (!ruleSeen[k]) {
+          ruleSeen[k] = 1;
+          if (depth === undefined && e.pos !== 'after') wbRuleList.push('【' + e.name + '】\n' + e.content);
+          else (depth === undefined ? wbAfter : depthEntries).push({ role: 'system', content: groupFill(g, WB_RULE_WRAP + '\n\n【' + e.name + '】\n' + e.content), promptDepth: depth, previewLabel: e.name });
+        }
+        return;
+      }
+      if (!seen[k]) { seen[k] = { text: '【' + e.name + '】\n' + e.content, owners: [], depth: depth, name: e.name, after: e.pos === 'after' }; wbList.push(seen[k]); }
       if (c === g) seen[k].owners = members.slice();
       else if (seen[k].owners.indexOf(c) < 0) seen[k].owners.push(c);
     });
@@ -95,6 +103,11 @@ function buildGroupMsgs(g, history) {
   var wbGroups = {}, wbOrder = [];
   wbList.forEach(function(w) {
     var key = w.owners.length >= members.length ? '' : w.owners.map(groupLabel).join('、');
+    if (w.depth !== undefined || w.after) {
+      var context = key ? '只有 ' + key + ' 知道并使用本条背景。\n' : '';
+      (w.depth === undefined ? wbAfter : depthEntries).push({ role: 'system', content: groupFill(g, WB_WRAP + '\n\n' + context + w.text), promptDepth: w.depth, previewLabel: w.name });
+      return;
+    }
     if (!wbGroups[key]) { wbGroups[key] = []; wbOrder.push(key); }
     wbGroups[key].push(w.text);
   });
@@ -121,7 +134,8 @@ function buildGroupMsgs(g, history) {
     } else out.push({ role: 'user', content: msgContentForAI(m, i >= richFrom, g) });
   });
   var fileSys = typeof filesContextFor === 'function' ? filesContextFor(hist) : null;
-  return msgs.concat(fileSys ? [fileSys] : [], out);
+  if (preview) wbAfter.forEach(function(m) { m.previewZone = 'after'; });
+  return msgs.concat(fileSys ? [fileSys] : [], placePromptDepth(out, depthEntries, preview), wbAfter);
 }
 function groupReplyN(g) { var n = GROUP_REPLY_N[groupCfgOf(g).replyN] || GROUP_REPLY_N.mid; return n[0] + '～' + n[1]; }
 function groupActionOn(g) { return !!(g.chatCfg && g.chatCfg.actionOn); }

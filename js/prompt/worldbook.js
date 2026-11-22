@@ -9,25 +9,37 @@ var wbDetailTitle= document.getElementById('wbDetailTitle');
 var wbEntryName  = document.getElementById('wbEntryName');
 var wbEntryKeywords = document.getElementById('wbEntryKeywords');
 var wbEntryContent  = document.getElementById('wbEntryContent');
-var wbInjectPos  = document.getElementById('wbInjectPos');
+var wbPositionPicker = createPromptPositionPicker(document.getElementById('wbInjectPos'));
 var wbDetailSave = document.getElementById('wbDetailSave');
 var wbAddEntryBtn= document.getElementById('wbAddEntryBtn');
 var wbPanelList  = document.getElementById('wbPanelList');
 var wbDetailDelete = document.getElementById('wbDetailDelete');
 
-// 世界书条目：{ id, name, keywords, content, pos: 'auto' | 'before' | 'middle' | 'after', folderId: '' = 未分类, rule }
-// rule: true =「写法要求」（用户要的：世界书要能真的管住模型）：不放进「背景设定」那段，单独一段【写法要求】放在聊天记录后面（js/chat/prompt.js 的 WB_RULE_WRAP）
-// 自动（新条目默认）：常驻条目放「前」当底色，关键词触发的放「中」（预设后面、聊天记录前面），都不插进聊天记录里，不抢戏
+// 世界书条目：pos 只保存 before / after；选了深度时按 depth 发送。
 // 文件夹：{ id, name }
 var wbEntries = mphoneStore.load('mphone_worldbook', []);
 var wbFolders = mphoneStore.load('mphone_wb_folders', []);
 var wbEditingId = null;   // null = 新建
 var wbOpenFolders = {};   // 列表里展开的文件夹（默认全部收起）
-var WB_POS_LABEL = { auto: '自动', before: '前', middle: '中', after: '后' };
-function wbResolvePos(e) { return e.pos === 'auto' ? (e.keywords ? 'middle' : 'before') : (e.pos || 'before'); }
+function wbPosition(pos) { return pos === 'after' ? 'after' : 'before'; }
+function wbImportedPlacement(entry) {
+  var ext = entry.extensions || {};
+  var inChat = Number(ext.position == null ? entry.position : ext.position) === 4;
+  return { pos: inChat ? 'after' : 'before', depth: inChat ? promptDepth(ext.depth == null ? entry.depth : ext.depth) : undefined };
+}
+function normalizeWbPositions(entries) {
+  var changed = false;
+  entries.forEach(function(entry) {
+    var pos = wbPosition(entry.pos);
+    if (entry.pos !== pos) { entry.pos = pos; changed = true; }
+  });
+  return changed;
+}
+if (normalizeWbPositions(wbEntries)) mphoneStore.save('mphone_worldbook', wbEntries);
 var WB_NONE = '';         // 未分类
 
 function saveWbEntries() {
+  normalizeWbPositions(wbEntries);
   mphoneStore.save('mphone_worldbook', wbEntries);
   mphoneStore.save('mphone_wb_folders', wbFolders);
 }
@@ -131,7 +143,9 @@ function renderWbList() {
       nameEl.textContent = entry.name || '未命名';
       var subEl = document.createElement('div');
       subEl.className = 'pf-entry-card-sub';
-      subEl.textContent = (WB_POS_LABEL[entry.pos] || '前') + (entry.keywords ? ' · 关键词：' + entry.keywords : ' · 常驻');
+      var depth = promptDepth(entry.depth);
+      var position = depth === undefined ? (entry.rule ? '写法要求 · ' : '') + (entry.pos === 'after' ? '聊天记录后' : '聊天记录前') : '插入深度 ' + depth;
+      subEl.textContent = position + (entry.keywords ? ' · 关键词：' + entry.keywords : ' · 常驻');
       cb.appendChild(nameEl);
       cb.appendChild(subEl);
       card.appendChild(cb);
@@ -172,7 +186,7 @@ function wbExport(groups, name) {
   groups = groups.filter(function(g) { return g.entries.length; });
   if (!groups.length) { showToast('还没有世界书', 'plain'); return; }
   mphoneExportFile('worldbook', { folders: groups.map(function(g) {
-    return { name: g.name, entries: g.entries.map(function(e) { return { name: e.name, keywords: e.keywords || '', content: e.content || '', pos: e.pos || 'auto', enabled: e.enabled !== false, rule: !!e.rule }; }) };
+    return { name: g.name, entries: g.entries.map(function(e) { return { name: e.name, keywords: e.keywords || '', content: e.content || '', pos: wbPosition(e.pos), enabled: e.enabled !== false, rule: !!e.rule, depth: promptDepth(e.depth) }; }) };
   }) }, '世界书-' + name);
 }
 document.getElementById('wbExportAllBtn').addEventListener('click', function(e) { e.stopPropagation(); wbExport(wbGroups(), '全部'); });
@@ -230,14 +244,6 @@ document.getElementById('wbAddFolderBtn').addEventListener('click', function(e) 
   });
 });
 
-// 注入位置单选
-wbInjectPos.querySelectorAll('.pf-radio-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    wbInjectPos.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.remove('selected'); });
-    this.classList.add('selected');
-  });
-});
-
 // folderId：新建时预选的文件夹
 function openWbDetail(id, folderId) {
   var entry = null;
@@ -257,10 +263,7 @@ function openWbDetail(id, folderId) {
   });
   sel.value = entry ? (entry.folderId || WB_NONE) : (folderId || WB_NONE);
   if (sel.selectedIndex < 0) sel.value = WB_NONE;
-  var pos = entry ? (entry.pos || 'before') : 'auto';
-  wbInjectPos.querySelectorAll('.pf-radio-btn').forEach(function(b) {
-    b.classList.toggle('selected', b.dataset.val === pos);
-  });
+  wbPositionPicker.set(wbPosition(entry && entry.pos), entry && entry.depth);
   wbEntryKind.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b.dataset.val === (entry && entry.rule ? 'rule' : '')); });
   wbDetailDelete.classList.toggle('hidden', !entry);
   wbDetailView.classList.add('open');
@@ -268,21 +271,22 @@ function openWbDetail(id, folderId) {
 
 var wbEntryKind = document.getElementById('wbEntryKind');
 wbEntryKind.querySelectorAll('.pf-radio-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() { wbEntryKind.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b === btn); }); });
+  btn.addEventListener('click', function() {
+    wbEntryKind.querySelectorAll('.pf-radio-btn').forEach(function(b) { b.classList.toggle('selected', b === btn); });
+  });
 });
 wbDetailBack.addEventListener('click', function() { wbDetailView.classList.remove('open'); });
 
 wbAddEntryBtn.addEventListener('click', function(e) { e.stopPropagation(); openWbDetail(null); });
 
 wbDetailSave.addEventListener('click', function() {
-  var posBtn = wbInjectPos.querySelector('.pf-radio-btn.selected');
   var data = {
     name:     wbEntryName.value.trim() || '未命名',
     keywords: wbEntryKeywords.value.trim(),
     content:  wbEntryContent.value.trim(),
-    pos:      posBtn ? posBtn.dataset.val : 'auto',
     folderId: document.getElementById('wbEntryFolder').value,
-    rule:     !!wbEntryKind.querySelector('.pf-radio-btn.selected[data-val="rule"]')
+    rule:     !!wbEntryKind.querySelector('.pf-radio-btn.selected[data-val="rule"]'),
+    pos:      wbPositionPicker.pos
   };
   var entry = null;
   wbEntries.forEach(function(e) { if (e.id === wbEditingId) entry = e; });
@@ -292,6 +296,8 @@ wbDetailSave.addEventListener('click', function() {
     data.id = genWbId('wb');
     wbEntries.push(data);
   }
+  var saved = entry || data, depth = wbPositionPicker.depth;
+  if (depth === undefined) delete saved.depth; else saved.depth = depth;
   wbOpenFolders[data.folderId] = true;
   saveWbEntries();
   renderWbList();

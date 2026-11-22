@@ -3,21 +3,19 @@
 // =============================================
 // 选文件 → 认出里面的世界书，按文件夹列出来（默认全勾）→ 导入
 // · 文件夹按名字找，没有就新建；名字和内容都一样的条目算已经有了，不重复导入
-// · 位置：眠花糖机文件照原样；酒馆的按它的位置换算（和导入角色卡一样）；其他的用「自动」
+// · 位置统一为前、后或指定深度。
 // · 导进来只是放进世界书库，要在角色设置里关联给角色才会生效
 // =============================================
 var wbImpOverlay = document.getElementById('wbImpOverlay');
 var wbImpGroups = null;   // [{ name, entries: [{ name, keywords, content, pos, enabled }] }]
 
-// 酒馆的位置：0/1 角色描述前后 → 前；2/3 作者注释 → 中；4 按深度插入 → 后
-function wbImpStPos(p) { return p === 4 ? 'after' : (p === 2 || p === 3) ? 'middle' : p === 0 || p === 1 ? 'before' : 'auto'; }
 function wbImpKeys(k) { return Array.isArray(k) ? k.filter(Boolean).join(',') : (typeof k === 'string' ? k : ''); }
 function wbImpFromStEntry(e) {
   if (!e || !e.content) return null;
-  var pos = e.extensions && e.extensions.position != null ? e.extensions.position : e.position;
+  var placement = wbImportedPlacement(e);
   return { name: String(e.comment || e.name || (Array.isArray(e.key) && e.key[0]) || (Array.isArray(e.keys) && e.keys[0]) || '导入条目').slice(0, 60),
     keywords: e.constant ? '' : wbImpKeys(e.key || e.keys), content: String(e.content),
-    pos: typeof pos === 'number' ? wbImpStPos(pos) : 'auto', enabled: !(e.disable || e.enabled === false) };
+    pos: placement.pos, enabled: !(e.disable || e.enabled === false), depth: placement.depth };
 }
 // 从一个 JSON 里认世界书
 function wbImpFromJson(j, fileName) {
@@ -27,7 +25,7 @@ function wbImpFromJson(j, fileName) {
     return j.folders.map(function(f) {
       return { name: String(f.name || '未分类'), entries: (f.entries || []).filter(function(e) { return e && e.content; }).map(function(e) {
         return { name: String(e.name || '未命名').slice(0, 60), keywords: wbImpKeys(e.keywords), content: String(e.content),
-          pos: ['auto', 'before', 'middle', 'after'].indexOf(e.pos) >= 0 ? e.pos : 'auto', enabled: e.enabled !== false, rule: !!e.rule };
+          pos: wbPosition(e.pos), enabled: e.enabled !== false, rule: !!e.rule, depth: promptDepth(e.depth) };
       }) };
     });
   }
@@ -44,7 +42,7 @@ function wbImpFromJson(j, fileName) {
   // 一组 { name, content } 的数组
   if (Array.isArray(j)) {
     return [{ name: base, entries: j.map(function(e) {
-      return e && e.content ? { name: String(e.name || e.comment || '导入条目').slice(0, 60), keywords: wbImpKeys(e.keywords || e.keys || e.key), content: String(e.content), pos: 'auto', enabled: !e.disabled } : null;
+      return e && e.content ? { name: String(e.name || e.comment || '导入条目').slice(0, 60), keywords: wbImpKeys(e.keywords || e.keys || e.key), content: String(e.content), pos: 'before', enabled: !e.disabled } : null;
     }).filter(Boolean) }];
   }
   return [];
@@ -71,7 +69,7 @@ document.getElementById('wbImportBtn').addEventListener('click', function(e) {
             r.books.forEach(function(x) {
               var cat = String(x.category || '').trim() || '未分类';
               (by[cat] = by[cat] || []).push({ name: String(x.name || '未命名').slice(0, 60), content: String(x.content),
-                keywords: x.alwaysOn ? '' : wbImpKeys(x.keywords), pos: 'auto', enabled: !x.disabled });
+                keywords: x.alwaysOn ? '' : wbImpKeys(x.keywords), pos: 'before', enabled: !x.disabled });
             });
             return Object.keys(by).map(function(k) { return { name: k, entries: by[k] }; });
           });
@@ -142,9 +140,10 @@ document.getElementById('wbImpOk').addEventListener('click', function() {
       if (!f) { f = { id: genWbId('wf'), name: g.name }; wbFolders.push(f); folders++; }
       folderId = f.id;
     }
-    var entry = { id: genWbId('wb'), name: e.name, keywords: e.keywords || '', content: e.content, pos: e.pos || 'auto', folderId: folderId };
+    var entry = { id: genWbId('wb'), name: e.name, keywords: e.keywords || '', content: e.content, pos: wbPosition(e.pos), folderId: folderId };
     if (e.enabled === false) entry.enabled = false;
     if (e.rule) entry.rule = true;
+    if (promptDepth(e.depth) !== undefined) entry.depth = promptDepth(e.depth);
     wbEntries.push(entry);
     added++;
   });

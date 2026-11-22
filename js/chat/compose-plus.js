@@ -15,6 +15,7 @@ function placeAlbumPop() {
 }
 function openAlbumPick(anchor) {
   if (anchor) albumPopAnchor = anchor;
+  document.getElementById('albumPickLimit').textContent = '最多 ' + CHAT_PHOTO_LIMIT + ' 张';
   document.getElementById('albumPickMain').style.display = '';
   document.getElementById('albumPickText').style.display = 'none';
   document.getElementById('albumTextInput').value = '';
