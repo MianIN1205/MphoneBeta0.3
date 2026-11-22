@@ -630,6 +630,7 @@ function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl, images) {
       cell.hidden = images.length > 4 && index >= 3;
       var img = document.createElement('img');
       img.src = photo.src;
+      img.dataset.photoIndex = index;
       img.alt = '第 ' + (index + 1) + ' 张图片';
       cell.appendChild(img);
       bubble.appendChild(cell);
@@ -649,7 +650,8 @@ function appendImgMsg(role, imgSrc, targetListEl, targetEmptyEl, images) {
     }
   } else {
     var img = document.createElement('img');
-    img.src = imgSrc;
+    img.src = Array.isArray(images) && images.length ? images[0].src : imgSrc;
+    img.dataset.photoIndex = 0;
     img.alt = '图片消息';
     bubble.appendChild(img);
   }

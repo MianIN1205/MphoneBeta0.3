@@ -7,6 +7,9 @@
 function charKey(idx) { return charList[idx] ? charList[idx].id : '_none'; }
 function getChatHistory(idx) { var k = charKey(idx); if (!chatHistories[k]) chatHistories[k] = []; return chatHistories[k]; }
 function getDramaHistory(idx) { var k = charKey(idx); if (!dramaHistories[k]) dramaHistories[k] = []; return dramaHistories[k]; }
+function chatMessagePhotos(message) {
+  return Array.isArray(message.images) && message.images.length ? message.images : message.imgSrc ? [{ src: message.imgSrc }] : [];
+}
 // 一条消息要保存的字段；alts 是「重新生成」留下的多个版本（每个版本是一组消息）
 function stripMsg(m, skipAlts) {
   var o = { role: m.role, content: m.content, imgSrc: m.imgSrc, images: m.images, sticker: m.sticker, status: m.status, statusHtml: m.statusHtml, statusLined: m.statusLined, time: m.time,

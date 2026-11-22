@@ -65,6 +65,7 @@ function llmPrepare(msgs, cfg, caps) {
     var c = m.content;
     if (Array.isArray(c)) {
       c = c.map(function(p) {
+        if (p._historyPhotoLabel) return caps.image ? { type: 'text', text: p.text } : null;
         if (p.type === 'image_url' && !caps.image) return { type: 'text', text: '[图片：当前模型看不到图片内容]' };
         if (p.type === 'input_audio' && !caps.audio) return { type: 'text', text: voiceTextForAI(p._transcript, p._transcriptStatus) };
         return p;

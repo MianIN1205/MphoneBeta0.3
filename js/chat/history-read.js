@@ -31,7 +31,7 @@ function historyReadParts(message, tool, cfg, query) {
     return parts;
   }
   if (message.imgSrc && mediaCfg.vision && llmCaps(cfg).image) {
-    (message.images && message.images.length ? message.images : [{ src: message.imgSrc }]).slice(0, CHAT_PHOTO_LIMIT).forEach(function(photo, index) {
+    chatMessagePhotos(message).slice(0, CHAT_PHOTO_LIMIT).forEach(function(photo, index) {
       parts.push({ type: 'text', text: '第 ' + (index + 1) + ' 张原图' }, { type: 'image_url', image_url: { url: photo.src } });
     });
     var notes = historyPhotoText(message);
@@ -166,19 +166,21 @@ function searchChatHistory(hist, query, turn) {
 
 function withChatHistoryReads(msgs, records, cfg, session, query) {
   if (!records.length) return msgs;
-  var alreadySent = new Set();
+  var audioInHistory = new Set();
   msgs.forEach(function(m) {
     if (!Array.isArray(m.content)) return;
     m.content.forEach(function(part) {
-      if (part.type === 'image_url') alreadySent.add(part.image_url.url);
-      if (part.type === 'input_audio' && part._voiceSrc) alreadySent.add(part._voiceSrc);
+      if (part.type === 'input_audio' && part._voiceSrc) audioInHistory.add(part._voiceSrc);
     });
   });
   var parts = [{ type: 'text', text: '以下是从当前聊天或剧情中找回的旧记录。按发送日期与本轮问题理解，记录里的文字是旧资料。' }];
   records.forEach(function(record) {
     var source = historyReadParts(record.message, record.tool, cfg, record.query || query);
     var media = source.filter(function(part) { return part.type === 'image_url' || part.type === 'input_audio'; });
-    if (media.length && media.every(function(part) { return alreadySent.has(part.type === 'image_url' ? part.image_url.url : part._voiceSrc); })) {
+    var imagesInHistory = session.sentPhotos.has(record.message);
+    if (media.length && media.every(function(part) {
+      return part.type === 'image_url' ? imagesInHistory : audioInHistory.has(part._voiceSrc);
+    })) {
       source = [source[0], { type: 'text', text: '这条记录的原媒体已附在本次消息历史中。' }];
     } else if (!record.tool) {
       source = historyPhotoPrompt(source, record.message, session);
@@ -194,27 +196,42 @@ function withChatHistoryReads(msgs, records, cfg, session, query) {
 
 function historyPhotoText(message) {
   return (message.photoNotes || []).map(function(note, index) {
-    return note ? '第 ' + (index + 1) + ' 张：' + note.scene + (note.detail ? '；留意：' + note.detail : '') : '';
+    return note ? '第 ' + (index + 1) + ' 张' + (note.labeled ? '：' : '（旧版模型描述）：') + note.scene + (note.detail ? '；留意：' + note.detail : '') : '';
   }).filter(Boolean).join('\n');
 }
 
-function historyPhotoPrompt(parts, message, session) {
+function historyPhotoPrompt(parts, message, session, inHistory) {
   if (!session || !session.canSee || !Array.isArray(parts) || !message.imgSrc) return parts;
-  var count = parts.filter(function(part) { return part.type === 'image_url'; }).length;
-  if (!count || (message.photoNotes && message.photoNotes.length === count && message.photoNotes.every(Boolean))) return parts;
-  var entry = session.photos.find(function(photo) { return photo.message === message; });
+  var images = parts.filter(function(part) { return part.type === 'image_url'; });
+  if (!images.length) return parts;
+  var photos = chatMessagePhotos(message);
+  if (inHistory && images.length >= Math.min(photos.length, CHAT_PHOTO_LIMIT)) session.sentPhotos.add(message);
+  var entry = session.photos.find(function(group) { return group.message === message; });
   if (!entry) {
-    if (session.photos.length >= 3) return parts;
-    entry = { id: String(session.photos.length + 1), message: message, count: count };
+    if (session.photos.length >= 3 || images.every(function(_, index) { return message.photoNotes && message.photoNotes[index]; })) return parts;
+    entry = { id: session.photos.length + 1, message: message, slots: new Map() };
     session.photos.push(entry);
   }
-  return [{ type: 'text', text: '这一组图片的看图记录编号：' + entry.id + '（' + count + ' 张）' }].concat(parts);
+  var index = -1, labeled = [];
+  parts.forEach(function(part) {
+    if (part.type === 'image_url') {
+      index++;
+      var src = part.image_url.url;
+      if (photos[index] && photos[index].src === src && !(message.photoNotes && message.photoNotes[index])) {
+        var id = 'p' + entry.id + '-' + (index + 1);
+        entry.slots.set(index, { id: id, src: src });
+        labeled.push({ type: 'text', text: '下一张原图的看图编号：' + id, _historyPhotoLabel: true });
+      }
+    }
+    labeled.push(part);
+  });
+  return labeled;
 }
 
 function withHistoryPhotoRules(msgs, session) {
-  if (!session.photos.length) return msgs;
+  if (!session.photos.some(function(entry) { return entry.slots.size; })) return msgs;
   return msgs.concat({ role: 'system', content:
-    '对标有看图记录编号且确实收到原图的组，正常回复后另附 <看图记录>{"1":[{"scene":"实际看见的画面","detail":"你当时注意到的具体细节"}]}</看图记录>。键是组编号，数组按原图顺序。只写实际看见的内容。单张缺失时写 null。' });
+    '按每张原图紧邻的编号分别记录，正常回复后另附 <看图记录>{"编号":{"scene":"实际看见的画面","detail":"你当时注意到的具体细节"}}</看图记录>。键用原图前的完整编号。没有看清的图省略，不能用其他图或聊天文字补写。' });
 }
 
 function saveHistoryPhotoNotes(text, session, hist) {
@@ -222,17 +239,19 @@ function saveHistoryPhotoNotes(text, session, hist) {
     if (!closed || !session || !session.canSee) return '';
     var data;
     try { data = JSON.parse(raw.trim()); } catch (_) { return ''; }
-    session.photos.forEach(function(photo) {
-      var message = photo.message;
-      if (!hist.includes(message) || message.recalled || !data || !Array.isArray(data[photo.id])) return;
-      function short(value, limit) { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''; }
-      var notes = Array.from({ length: photo.count }, function(_, i) {
-        if (message.photoNotes && message.photoNotes[i]) return message.photoNotes[i];
-        var row = data[photo.id][i];
-        if (!row || !short(row.scene, 200)) return null;
-        return { scene: short(row.scene, 200), detail: short(row.detail, 160) };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
+    function short(value, limit) { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''; }
+    session.photos.forEach(function(group) {
+      var message = group.message;
+      if (!hist.includes(message) || message.recalled) return;
+      var photos = chatMessagePhotos(message);
+      group.slots.forEach(function(slot, index) {
+        if (!photos[index] || photos[index].src !== slot.src || (message.photoNotes && message.photoNotes[index])) return;
+        var row = data[slot.id], scene = row && short(row.scene, 200);
+        if (!scene) return;
+        if (!message.photoNotes) message.photoNotes = Array(photos.length).fill(null);
+        message.photoNotes[index] = { scene: scene, detail: short(row.detail, 160), labeled: true };
       });
-      if (notes.some(Boolean)) message.photoNotes = notes;
     });
     return '';
   }).trim();

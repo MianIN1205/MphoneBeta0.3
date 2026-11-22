@@ -362,7 +362,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
   var toolRun = { entries: [] }, toolDots = typing.bubble.firstChild;
   var toolAnchor = hist[hist.length - 1];
   var generation = genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
-  var historySession = { canSee: !!(mediaCfg.vision && llmCaps(cfg).image), photos: [] };
+  var historySession = { canSee: !!(mediaCfg.vision && llmCaps(cfg).image), photos: [], sentPhotos: new WeakSet() };
   syncGenBtn();
   // 这个角色的聊天室开着（不管在看聊天还是剧情）就画进对应的列表；切去别的角色时不碰那边的列表
   function roomOpen() { return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === replyChar; }

@@ -18,7 +18,8 @@ function ivShowPhoto() {
   var note = ivState.notes[ivState.index];
   ivNotes.hidden = !note;
   if (!note) ivNotes.open = false;
-  ivNotesText.textContent = note ? '画面 · ' + note.scene + (note.detail ? '\n他留意到 · ' + note.detail : '') : '';
+  ivNotes.querySelector('summary').textContent = note && !note.labeled ? '旧版看图记录' : '看图记录';
+  ivNotesText.textContent = note ? '模型描述 · ' + note.scene + (note.detail ? '\n模型留意到 · ' + note.detail : '') : '';
   ivReset();
 }
 function ivStep(delta) {
@@ -94,9 +95,7 @@ function ivChatPhotos(image) {
   }
   var notes = images.map(function(el) {
     var owner = el.closest('.chat-msg-row')._msg;
-    var bubble = el.closest('.img-bubble');
-    var position = Array.from(bubble.querySelectorAll('img')).indexOf(el);
-    return owner && owner.photoNotes && owner.photoNotes[position];
+    return owner && owner.photoNotes && owner.photoNotes[el.dataset.photoIndex];
   });
   return { photos: images.map(function(el) { return el.src; }), index: images.indexOf(image), notes: notes };
 }
