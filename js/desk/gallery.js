@@ -15,6 +15,7 @@ function openDeskScreen(screenId, onOpen) {
 function openSysBook(kind) {
   if (kind === 'diary') openDeskScreen('appDiary', function() { renderDiaryChars(); renderDiaries(); });
   else if (kind === 'gallery') openDeskScreen('appGallery', renderGallery);
+  else if (kind === 'pair') openPairNotes();
 }
 function openAnnivScreen() { openDeskScreen('appAnniv', renderAnnivs); }
 
@@ -23,15 +24,16 @@ function deskDateText(t) {
   return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
 
-// 书架上固定有「日记」「相册」两本书（旧数据里没有就补上）
+// 旧书架缺少系统书时补上
 (function ensureSysBooks() {
   var area = document.querySelector('.notes-shelf-area');
   var have = {};
   area.querySelectorAll('.book').forEach(function(b) { if (b._sys) have[b._sys] = true; });
   var add = [
     { sys: 'diary', name: '日记', color: '#F3CFD8' },
-    { sys: 'gallery', name: '相册', color: '#CFE0F1' }
-  ].filter(function(b) { return !have[b.sys]; }).reverse();   // 倒着插到最前面，最后是「日记」「相册」的顺序
+    { sys: 'gallery', name: '相册', color: '#CFE0F1' },
+    { sys: 'pair', name: '小本子', color: '#EAD8E9' }
+  ].filter(function(b) { return !have[b.sys]; }).reverse();
   if (!add.length) return;
   add.forEach(function(data) {
     var shelves = Array.from(area.querySelectorAll('.bookshelf'));

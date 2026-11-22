@@ -165,7 +165,7 @@ function letterSetDays(n) {
   var d = new Date(letterDayStart(Date.now()) + n * 86400000);
   document.getElementById('letterOpenDate').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
-document.getElementById('lettersWriteBtn').addEventListener('click', function() {
+function openLetterWriter(recipient) {
   var sel = document.getElementById('letterTo');
   sel.innerHTML = '<option value="self">未来的自己</option>';
   charList.forEach(function(c) { if (c.isGroup) return;   // 群聊不算
@@ -173,6 +173,7 @@ document.getElementById('lettersWriteBtn').addEventListener('click', function() 
     o.value = c.id; o.textContent = c.charAlias || c.charName || '未命名';
     sel.appendChild(o);
   });
+  if (recipient && Array.from(sel.options).some(function(o) { return o.value === recipient; })) sel.value = recipient;
   document.getElementById('letterContent').value = '';
   var tom = new Date(letterDayStart(Date.now()) + 86400000);
   document.getElementById('letterOpenDate').min = tom.getFullYear() + '-' + pad(tom.getMonth() + 1) + '-' + pad(tom.getDate());
@@ -187,7 +188,8 @@ document.getElementById('lettersWriteBtn').addEventListener('click', function() 
     quick.appendChild(b);
   });
   letterWriteOverlay.classList.add('open');
-});
+}
+document.getElementById('lettersWriteBtn').addEventListener('click', function() { openLetterWriter(); });
 document.getElementById('letterWriteCancel').addEventListener('click', function() { letterWriteOverlay.classList.remove('open'); });
 document.getElementById('letterWriteSend').addEventListener('click', function() {
   var content = document.getElementById('letterContent').value.trim();

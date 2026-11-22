@@ -1,0 +1,57 @@
+/* 从聊天进入的共写入口，以及书架上的小本子。 */
+#appPairNotes { background: #fdf3f6; }
+.pair-body { width: min(100%, 460px); margin: 0 auto; padding: 16px 18px 24px; }
+.pair-person {
+  display: flex; align-items: center; gap: 9px; min-height: 28px;
+  margin: 1px 0 14px; padding: 0 3px; color: #754f5e; font-size: 13px; font-weight: 600;
+}
+.pair-person[hidden] { display: none; }
+.pair-avatar { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: #f2dce4 center / cover no-repeat; }
+.pair-person select { max-width: 75%; border: 1px solid #ebd2dc; padding: 4px 8px; border-radius: 9px; background: #fff9fb; color: inherit; font: inherit; }
+.pair-home, .pair-paper {
+  border: 1px solid #efdde4; border-radius: 18px; background: #fffbfc;
+  box-shadow: 0 3px 10px rgba(137, 73, 94, .05);
+}
+.pair-home { padding: 3px 13px; }
+.pair-link {
+  display: grid; grid-template-columns: 36px minmax(0,1fr) 16px; align-items: center; gap: 12px;
+  width: 100%; min-height: 67px; padding: 10px 1px; border: 0;
+  background: transparent; color: #553b46; font: inherit; text-align: left; cursor: pointer;
+}
+.pair-link + .pair-link { border-top: 1px solid #f1e5ea; }
+.pair-link b, .pair-link small { display: block; }
+.pair-link b { font-size: 14px; font-weight: 600; }
+.pair-link small { margin-top: 3px; color: #876f79; font-size: 12px; line-height: 1.4; }
+.pair-symbol { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: #f8e6ed; color: #a65b76; }
+.pair-symbol svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.pair-chevron { color: #a87385; font-size: 21px; justify-self: end; }
+.pair-date { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; gap: 8px; color: #87586a; font-size: 13px; text-align: center; margin-bottom: 10px; }
+.pair-date button {
+  width: 32px; height: 30px; border: 1px solid #ecd5df; border-radius: 10px;
+  background: #fcf3f7; color: #95546d; font: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.pair-date button:disabled { opacity: .38; }
+.pair-paper { padding: 15px; }
+.pair-paper label { display: block; margin-bottom: 7px; color: #775260; font-size: 12px; font-weight: 600; }
+.pair-paper textarea {
+  display: block; box-sizing: border-box; width: 100%; padding: 10px 11px; border: 1px solid #efdee5;
+  border-radius: 11px; resize: vertical; background: #fffdfd; color: #573e49; font: inherit;
+  font-size: 14px; line-height: 1.55; -webkit-user-select: text; user-select: text;
+}
+.pair-paper textarea::placeholder { color: #947e88; }
+.pair-paper textarea:focus { outline: 1px solid #d8a8b9; }
+.pair-inline {
+  display: block; margin: 4px 0 12px auto; padding: 5px 0 5px 8px; border: 0;
+  background: none; color: #92536c; font: inherit; font-size: 12px; cursor: pointer;
+}
+.pair-reply { margin-top: 12px; padding: 10px 11px; border-radius: 10px; background: #faedf2; color: #563e49; }
+.pair-reply b { color: #87576a; font-size: 11.5px; }
+.pair-reply p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pair-paper-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-top: 12px; }
+.pair-button { min-height: 34px; padding: 5px 12px; border: 1px solid #ecd0dc; border-radius: 11px; background: #fff9fb; color: #855263; font: inherit; font-size: 12px; cursor: pointer; }
+.pair-button.primary { background: #f1cbd9; border-color: #eabacf; color: #71374e; }
+.pair-button:disabled, .pair-inline:disabled { opacity: .62; cursor: default; }
+.pair-feedback { margin: 9px 0 0; font-size: 11.5px; color: #836b75; line-height: 1.5; }
+.pair-feedback:empty { display: none; }
+.pair-pin { margin-top: 10px; padding: 12px 14px; }
+.pair-pin summary { color: #805568; font-size: 13px; line-height: 1.45; cursor: pointer; overflow-wrap: anywhere; }

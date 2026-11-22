@@ -534,6 +534,8 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
       '如果需要确认当前对话中某条旧记录，而眼前没有足够资料，可以先只输出 <回查记录>能定位原记录的关键词（如 昨天 奶茶 图片）</回查记录>，收到回查结果后再回答。每次回复只能查一次。若已有找回的记录可回答，直接继续。没找到或不确定时请说明。' });
     var errorContext = isChatView && !isGrp && typeof replyErrorContext === 'function' ? replyErrorContext(hist) : null;
     if (errorContext) baseMsgs.push(errorContext);
+    var archiveContext = isChatView && !isGrp ? replyArchiveContext(replyChar, question) : null;
+    if (archiveContext) baseMsgs.push(archiveContext);
     var rules = [].concat(isChatView ? chatFormatRules(replyChar) : dramaFormatRules(replyChar), cotRules(!isChatView, replyChar));
     var replyTools = records.some(function(record) { return record.tool; }) && !/重新|最新|现在.*查/.test(question) ? [] : mcpTools;
     var options = {
@@ -577,6 +579,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
       reread.push({ role: 'system', content: hit ? '本轮已完成回查。请直接回答，不再输出回查标签。' :
         '本轮回查未找到唯一匹配的历史记录。需要时请用户确认是哪一份，不要猜记录内容，也不要再输出回查标签。' });
       if (errorContext) reread.push(errorContext);
+      if (archiveContext) reread.push(archiveContext);
       aiText = '';
       clearPreview();
       typing.bubble.textContent = '正在回看聊天记录…';

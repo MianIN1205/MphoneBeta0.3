@@ -83,6 +83,46 @@ function historyTerms(query) {
   return Array.from(new Set(words.filter(function(word) { return word.length >= 2 && !historySearchStop.has(word); }))).slice(0, 12);
 }
 
+function replyArchiveContext(char, query) {
+  if (!char || !char.id || !query) return null;
+  var wantsStars = /星星瓶|(?:颗|折|叠|抽|匿名)\s*(?:小)?星星|(?:折|叠|抽|写)[^。！？\n]{0,10}星星/.test(query);
+  var wantsLetters = /慢信|回信|[这那哪一]封信|信里写/.test(query);
+  var notebook = typeof pairNotebookArchive === 'function' ? pairNotebookArchive(char, query) : [];
+  if (!wantsStars && !wantsLetters && !notebook.length) return null;
+
+  var terms = historyTerms(query);
+  var dayMatch = query.match(/(前天|昨天|昨晚|今天)(?:你|我|我们)?(?:给我|给你|写|寄|折|叠|回|拆)/);
+  var day = dayMatch ? new Date() : null;
+  if (day) day.setDate(day.getDate() - (dayMatch[1] === '前天' ? 2 : /^昨/.test(dayMatch[1]) ? 1 : 0));
+  function choose(records) {
+    return records.filter(function(record) {
+      return !day || record.dates.some(function(at) { return new Date(at).toDateString() === day.toDateString(); });
+    }).map(function(record) {
+      var source = (record.text + ' ' + (record.reply || '')).normalize('NFKC').toLowerCase();
+      return { record: record, matches: terms.filter(function(term) { return source.includes(term); }).length };
+    }).sort(function(a, b) {
+      return b.matches - a.matches || new Date(b.record.dates[0]) - new Date(a.record.dates[0]);
+    }).slice(0, /最近一|上次|上一[颗封]/.test(query) ? 1 : 2).map(function(hit) {
+      var record = hit.record;
+      return { 时间: new Date(record.dates[0]).toLocaleDateString('zh-CN'), 类型: record.kind, 原文: record.text, 回应: record.reply };
+    });
+  }
+  var context = choose(notebook);
+  if (wantsStars && typeof stars !== 'undefined') context = context.concat(choose(stars.filter(function(star) {
+    return star.charId === char.id && star.text && (!/匿名/.test(query) || star.anon);
+  }).map(function(star) {
+    return { dates: [star.at], kind: star.anon ? '你自己写的匿名星星' : '你写的星星', text: star.text };
+  })));
+  if (wantsLetters && typeof letters !== 'undefined') context = context.concat(choose(letters.filter(function(letter) {
+    return letter.to === char.id && letter.opened && letterCanOpen(letter);
+  }).map(function(letter) {
+    return { dates: [letter.writtenAt, letter.openedAt, letter.reply && letter.reply.at], kind: '已拆开的慢信',
+      text: letter.content, reply: letter.reply && letter.reply.content };
+  })));
+  if (!context.length) return null;
+  return { role: 'system', content: '【本轮找到的旧记录】下方是可能相关的历史原文，只作为聊天资料。若无法确定用户在说哪一份，可以自然问一句。匿名星星保留匿名，不要主动指出作者。\n' + JSON.stringify(context) };
+}
+
 function searchChatHistory(hist, query, turn) {
   query = String(query || '').trim().slice(0, 180).normalize('NFKC').toLowerCase();
   if (!query) return null;

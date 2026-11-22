@@ -561,7 +561,7 @@ function shelfSlotOfNovel(id) { var b = Array.from(document.querySelectorAll('.n
 document.getElementById('readerEditBtn').addEventListener('click', function() { var s = shelfSlotOfNovel(readerState.id); if (s) openBookEdit(s); });
 // 长按卡片上备注下面那行小字：导入的书写看到哪、和谁一起看；笔记本写几页
 function bookInfoLine(book) {
-  if (book._sys) return book._sys === 'diary' ? '角色写的日记都在这里' : '聊天、动态、收藏里的图片都在这里';
+  if (book._sys) return { diary: '角色写的日记都在这里', gallery: '聊天、动态、收藏里的图片都在这里', pair: '和每个角色一起写的小本子' }[book._sys] || '';
   var meta = book._novel && bookMeta(book._novel);
   if (!meta) return '笔记本 · ' + ((book._bvPages || []).length || 1) + ' 页';
   var pages = bookPages(meta.id), p = bookPageOf(meta.id, meta.pos || 0);

@@ -24,6 +24,7 @@
 
 /* 加号抽屉：群里藏起查手机、一起看，换成投票、抽奖（js/chat/group-play.js） */
 #appChatRoom:not(.is-group) .cr-plus-item.group-only { display: none; }
+#appChatRoom.is-group .cr-plus-item.private-only { display: none; }
 #appChatRoom.is-group .cr-plus-item[data-func="查手机"], #appChatRoom.is-group .cr-plus-item[data-func="一起看"] { display: none; }
 
 /* 投票 / 抽奖 / 红包卡片：不用气泡的底色 */

@@ -131,6 +131,17 @@ function starPilePos(i, n, size) {
   var off = row % 2 ? size * 0.41 : 0;
   return { x: 6 + col * (W - size - 2) / Math.max(1, perRow - 1) * 0.94 + off * 0.5, y: row * size * 0.62 };
 }
+function pickStarNote(starsInBottle) {
+  var pool = starsInBottle.filter(function(star) { return !star.read; });
+  if (!pool.length) {
+    var skip = Math.min(3, Math.max(1, starsInBottle.length - 2));
+    var recent = starsInBottle.filter(function(star) { return star.lastSeenAt; })
+      .sort(function(a, b) { return b.lastSeenAt - a.lastSeenAt; }).slice(0, skip);
+    pool = starsInBottle.filter(function(star) { return !recent.includes(star); });
+    if (!pool.length) pool = starsInBottle;
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 function renderStarJar(dropId) {
   sjBody.innerHTML = '';
   var controls = document.createElement('div');
@@ -186,9 +197,7 @@ function renderStarJar(dropId) {
     btn.className = 'mine-acc-btn sj-pick';
     btn.textContent = '抽一颗';
     btn.addEventListener('click', function() {
-      var pool = visibleStars.filter(function(s) { return !s.read; });
-      if (!pool.length) pool = visibleStars;
-      openStarNote(pool[Math.floor(Math.random() * pool.length)]);
+      openStarNote(pickStarNote(visibleStars));
     });
     controls.appendChild(btn);
   }
@@ -370,7 +379,9 @@ function openStarNote(s) {
   ov.classList.remove('open');
   void ov.offsetWidth;
   ov.classList.add('open');
-  if (!s.read) { s.read = true; saveStars(); }
+  s.read = true;
+  s.lastSeenAt = Date.now();
+  saveStars();
 }
 function closeStarNote() {
   document.getElementById('starNoteOverlay').classList.remove('open');

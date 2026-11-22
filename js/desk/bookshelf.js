@@ -269,8 +269,8 @@ document.getElementById('bookNewSave').addEventListener('click', function() {
 // 笔记界面 — 书架管理 syncShelves
 // =============================================
 // 生成一个书本槽：{ name, color, cover, pages, sys }
-// sys = 'diary' | 'gallery'：书架上的「日记」「相册」，点开进对应界面，不能删除
-var SYS_BOOK_EMBLEM = { diary: '📔', gallery: '🖼️' };
+// 系统书点开进对应界面，不能删除
+var SYS_BOOK_EMBLEM = { diary: '📔', gallery: '🖼️', pair: '📒' };
 function createBookSlot(data) {
   var slot  = document.createElement('div');
   slot.className = 'book-slot' + (data.sys ? ' sys-book' : '');

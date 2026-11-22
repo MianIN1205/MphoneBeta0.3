@@ -235,6 +235,9 @@ function sendPickedImage(files) {
         } else if (funcName === '一起看' && typeof openTogether === 'function') {
           closeCrPlusPanel();
           openTogether(openingChatCharIdx);
+        } else if (funcName === '留给彼此' && curC && !curC.isGroup) {
+          closeCrPlusPanel();
+          openPairNotes(curC.id);
         } else {
           showToast('「' + funcName + '」功能开发中', 'success');
         }
@@ -276,7 +279,7 @@ function sendPickedImage(files) {
     var group = inGroupRoom();
     if (plusOrderMode === group) return;
     plusOrderMode = group;
-    var visible = plusItems.filter(function(item) { return group || !item.classList.contains('group-only'); });
+    var visible = plusItems.filter(function(item) { return group ? !item.classList.contains('private-only') : !item.classList.contains('group-only'); });
     var hidden = plusItems.filter(function(item) { return visible.indexOf(item) === -1; });
     var pinned = plusPins.map(function(name) {
       return visible.find(function(item) { return item.dataset.func === name; });
