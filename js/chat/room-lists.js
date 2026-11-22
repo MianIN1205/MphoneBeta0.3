@@ -238,6 +238,9 @@ function sendPickedImage(files) {
         } else if (funcName === '留给彼此' && curC && !curC.isGroup) {
           closeCrPlusPanel();
           openPairNotes(curC.id);
+        } else if (funcName === '一起解牌' && curC && !curC.isGroup) {
+          closeCrPlusPanel();
+          openTarotReading(curC);
         } else {
           showToast('「' + funcName + '」功能开发中', 'success');
         }

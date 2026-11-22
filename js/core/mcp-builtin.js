@@ -132,12 +132,19 @@ var MB_TAROT = [
   ['月亮', '不安、幻象、潜意识', '迷雾散去、真相浮现'], ['太阳', '快乐、成功、温暖', '短暂的低落、过度乐观'], ['审判', '重生、召唤、反思', '自我怀疑、不肯面对'],
   ['世界', '圆满、完成、旅程的终点', '还差一步、未完成']
 ];
-function mbTarot(a) {
-  var n = Math.min(3, Math.max(1, parseInt(a.count, 10) || 1)), pool = MB_TAROT.slice(), pos = n === 3 ? ['过去', '现在', '未来'] : [], out = [];
+function drawTarotCards(count, allowReversed) {
+  var n = Math.min(3, Math.max(1, parseInt(count, 10) || 1)), pool = MB_TAROT.slice(), out = [];
   for (var i = 0; i < n; i++) {
-    var c = pool.splice(mbRand(pool.length), 1)[0], up = mbRand(2) === 0;
-    out.push((pos[i] ? pos[i] + '：' : '') + c[0] + (up ? '（正位）' : '（逆位）') + '——' + (up ? c[1] : c[2]));
+    var c = pool.splice(mbRand(pool.length), 1)[0], reversed = allowReversed && mbRand(2) === 1;
+    out.push({ name: c[0], reversed: reversed, keywords: c[reversed ? 2 : 1] });
   }
+  return out;
+}
+function mbTarot(a) {
+  var cards = drawTarotCards(a.count, true), pos = cards.length === 3 ? ['过去', '现在', '未来'] : [];
+  var out = cards.map(function(c, i) {
+    return (pos[i] ? pos[i] + '：' : '') + c.name + (c.reversed ? '（逆位）' : '（正位）') + '——' + c.keywords;
+  });
   return Promise.resolve((a.question ? '问的是：' + a.question + '\n' : '') + '抽到了：\n' + out.join('\n'));
 }
 var MB_RUN = { weather: mbWeather, read_url: mbReadUrl, lyrics: mbLyrics, calculate: mbCalc, roll_dice: mbDice, draw_lots: mbLots, tarot: mbTarot };

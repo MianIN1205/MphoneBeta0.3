@@ -1,0 +1,53 @@
+/* 一起解牌：沿用小手机的圆角，牌面和提示用浅紫与墨蓝。 */
+#appTarot { background: #f7f2f8; }
+.tarot-body { width: min(100%, 460px); margin: 0 auto; padding: 14px 18px 24px; color: #574861; }
+.tarot-person { display: flex; align-items: center; gap: 8px; margin: 0 0 12px 2px; font-size: 12.5px; }
+.tarot-person span { width: 26px; height: 26px; border-radius: 50%; background: #eae2ef center / cover no-repeat; }
+.tarot-form, .tarot-meaning, .tarot-guide { border: 1px solid #eadfeb; border-radius: 16px; background: #fffcff; padding: 13px; }
+.tarot-form > label { display: block; margin: 0 0 7px; font-size: 13px; font-weight: 600; }
+.tarot-form textarea {
+  display: block; width: 100%; padding: 8px 10px; resize: vertical; border: 1px solid #e9dceb; border-radius: 10px;
+  background: #fffdff; color: #554463; font: inherit; font-size: 13px; line-height: 1.55; user-select: text; -webkit-user-select: text;
+}
+.tarot-form textarea::placeholder { color: #86778d; }
+.tarot-options { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; }
+.tarot-spreads { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: #f2eaf5; }
+.tarot-spreads button {
+  min-width: 47px; padding: 5px 9px; border: 0; border-radius: 9px; color: #705982;
+  background: none; font: inherit; font-size: 12px; cursor: pointer;
+}
+.tarot-spreads button[aria-pressed="true"] { background: #fffaff; color: #503861; box-shadow: 0 1px 3px #5c39741c; }
+.tarot-reverse { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.tarot-reverse input { accent-color: #826294; }
+.tarot-main {
+  display: block; width: 100%; min-height: 34px; padding: 6px 10px; border: 1px solid #e0d0e8; border-radius: 11px;
+  background: #eee2f3; color: #644478; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tarot-main:disabled { opacity: .65; }
+.tarot-main[hidden] { display: none; }
+.tarot-drawn-question { margin: 11px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.tarot-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.tarot-cards.single { grid-template-columns: minmax(0, 112px); justify-content: center; }
+.tarot-card { padding: 0; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.tarot-position { display: block; margin-bottom: 5px; font-size: 11.5px; }
+.tarot-face {
+  position: relative; display: grid; justify-items: center; align-content: center; gap: 2px;
+  min-height: 106px; padding: 8px 4px; border: 1px solid #79638d; border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 36%, #705981, #3d304e 80%); color: #fff6f0;
+}
+.tarot-face::before { content: ''; position: absolute; inset: 4px; border: 1px solid #ded0db65; border-radius: 8px; pointer-events: none; }
+.tarot-card[aria-pressed="true"] .tarot-face { outline: 2px solid #af88ba; outline-offset: 2px; }
+.tarot-number, .tarot-face small { font-size: 10px; color: #e7d5e9; }
+.tarot-mark { color: #f7dfbf; font-size: 27px; line-height: 1; }
+.tarot-face b { font-size: 13px; }
+.tarot-card.reversed .tarot-face small { color: #f6d8b9; }
+.tarot-meaning h2 { margin: 0 0 5px; font-size: 14px; color: #5b4070; }
+.tarot-meaning p { margin: 5px 0 0; font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
+#tarotKeywords { color: #79548b; }
+.tarot-ask, .tarot-answer, .tarot-guide { margin-top: 10px; }
+.tarot-answer p { white-space: pre-wrap; }
+.tarot-status { margin: 6px 0; font-size: 12px; color: #96647e; }
+.tarot-status:empty { display: none; }
+.tarot-guide summary { cursor: pointer; font-size: 13px; color: #70557f; }
+.tarot-guide ol { margin: 9px 0 0; padding-left: 20px; font-size: 12px; line-height: 1.6; }
+.tarot-guide li + li { margin-top: 5px; }
