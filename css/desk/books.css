@@ -1,17 +1,20 @@
 /* 眠花糖机 — 书架里导入的书：阅读器、目录、一起看（js/desk/books.js） */
 #appReader { display: flex; flex-direction: column; background: #fbf7f1; }
 .reader-page {
-  flex: 1; overflow-y: auto; padding: 18px 22px 24px; color: #4a3f3a; line-height: 1.9; letter-spacing: 0.3px;
-  white-space: pre-wrap; word-break: break-word; font-size: 16px; -webkit-user-select: text; user-select: text;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 26px; color: #4a3f3a; line-height: 1.8; letter-spacing: 0.25px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; -webkit-user-select: text; user-select: text;
+  -webkit-touch-callout: default;
+  scrollbar-width: thin; scrollbar-color: #daccc2 transparent;
   background: linear-gradient(180deg, #fbf7f1, #f7f0e6);
 }
+.reader-page::selection { background: #f3d0da; color: #523a43; }
 .reader-bar {
   flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   background: rgba(251,247,241,0.96); border-top: 1px solid rgba(180,150,130,0.18);
 }
 .reader-btn { border: none; background: rgba(160,120,100,0.1); color: #7a625a; border-radius: 14px; padding: 7px 12px; font-family: inherit; font-size: 13px; cursor: pointer; }
 .reader-btn:disabled { opacity: 0.35; }
-.reader-font { border: none; background: none; color: #a08880; font-family: inherit; font-size: 13px; padding: 6px 4px; cursor: pointer; }
+.reader-font { width: 28px; flex-shrink: 0; border: none; background: none; color: #90766d; font: inherit; font-size: 13px; line-height: 1; padding: 7px 0; cursor: pointer; }
 .reader-progress { flex: 1; text-align: center; font-size: 12px; color: #a08880; }
 .reader-together {
   flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(253,236,241,0.95);
@@ -20,22 +23,43 @@
 .reader-tg-av { width: 26px; height: 26px; border-radius: 50%; background: #eee center / cover no-repeat; flex-shrink: 0; }
 .reader-tg-name { flex: 1; min-width: 0; font-size: 12.5px; color: #b0607a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-tg-btn { border: none; border-radius: 13px; padding: 6px 11px; font-family: inherit; font-size: 12.5px; background: #e8879f; color: #fff; cursor: pointer; flex-shrink: 0; }
-.reader-tg-btn.ghost { background: rgba(232,135,159,0.14); color: #c0607a; }
+.reader-tg-tools { display: flex; flex-shrink: 0; gap: 6px; }
+.reader-tg-icon {
+  display: grid; width: 34px; height: 32px; padding: 0; place-items: center; cursor: pointer;
+  border: 1px solid #edd3dc; border-radius: 11px; background: #fcf2f5; color: #99566d;
+}
+.reader-tg-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.reader-tg-toggle { background: #f5d7e1; border-color: #ebc7d4; }
+.reader-tg-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.reader-tg-icon[aria-pressed="true"] { background: #f2cad8; border-color: #df9fb5; color: #7c314a; }
+.reader-excerpt-btn {
+  position: absolute; z-index: 2; padding: 7px 12px; border: 1px solid #eacbd6; border-radius: 11px;
+  background: #fff8fa; color: #8d425b; box-shadow: 0 3px 10px rgba(98,53,70,0.15);
+  font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
+}
 /* 边看边聊：小栏「聊天」展开，书页在上面照样能看、能翻 */
-.reader-chat { display: none; flex-shrink: 0; height: 30%; min-height: 170px; flex-direction: column; background: rgba(253,246,248,0.98); border-top: 1px solid rgba(220,160,180,0.25); }
+.reader-chat { display: none; flex-shrink: 0; max-height: 34%; flex-direction: column; background: #fdf5f7; border-top: 1px solid #ead5da; box-shadow: 0 -4px 14px rgba(118,71,76,0.06); }
 #appReader.chat-open .reader-chat { display: flex; }
-.reader-chat-list { flex: 1; overflow-y: auto; padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; }
+.reader-chat-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 11px 16px 7px; display: flex; flex-direction: column; gap: 7px; scrollbar-width: thin; scrollbar-color: #e6c8d0 transparent; }
+.reader-chat-list > * { flex-shrink: 0; }
 .reader-chat-msg { max-width: 78%; padding: 7px 11px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
 .reader-chat-msg.ta { align-self: flex-start; background: #fff; color: #4a3f3a; box-shadow: 0 1px 3px rgba(150,110,120,0.12); }
 .reader-chat-msg.me { align-self: flex-end; background: #f6c9d5; color: #5a3a44; }
 .reader-chat-typing { color: #b9a0a8; font-size: 12px; }
 .reader-chat-act { align-self: flex-start; font-size: 11.5px; color: #a8989c; font-style: italic; margin: -2px 0 0 6px; }
-.reader-chat-note { align-self: center; font-size: 11px; color: #b8a4aa; }
-.reader-chat-q { display: block; font-size: 10.5px; color: #a0707e; margin-bottom: 2px; }
-.reader-chat-input { flex-shrink: 0; display: flex; align-items: flex-end; gap: 6px; padding: 6px 10px 8px; }
-.reader-chat-input textarea { flex: 1; min-width: 0; resize: none; border: none; outline: none; border-radius: 16px; padding: 8px 12px; font-family: inherit; font-size: 14px; line-height: 1.4; background: #fff; color: #4a3f3a; max-height: 72px; -webkit-user-select: text; user-select: text; }
-.reader-chat-page, .reader-chat-ask { flex-shrink: 0; width: 34px; height: 34px; border: none; border-radius: 50%; background: rgba(232,135,159,0.12); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
-.reader-chat-page.on { background: #e8879f; box-shadow: 0 0 0 2px rgba(232,135,159,0.3); }
+.reader-chat-note { align-self: center; text-align: center; font-size: 11px; color: #927780; }
+.reader-chat-q { display: block; font-size: 11.5px; color: #875566; margin-bottom: 3px; }
+.reader-chat-input { flex-shrink: 0; display: flex; align-items: flex-end; gap: 7px; padding: 6px 14px 9px; }
+.reader-chat-input textarea { box-sizing: border-box; flex: 1; min-width: 0; min-height: 36px; resize: none; border: none; outline: none; border-radius: 16px; padding: 8px 12px; font-family: inherit; font-size: 14px; line-height: 20px; background: #fff; color: #4a3f3a; max-height: 72px; -webkit-user-select: text; user-select: text; }
+.reader-chat-input textarea::placeholder { color: #96838a; }
+.reader-chat-ask { flex-shrink: 0; width: 36px; height: 36px; padding: 0; font-size: 16px; border: 1px solid #eed9e0; border-radius: 18px; background: #fbecf1; color: #9d5068; cursor: pointer; display: grid; place-items: center; }
+.reader-chat-quote {
+  flex-shrink: 0; align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 28px);
+  margin: 2px 14px 0; padding: 5px 9px; border: 1px solid #eed9e0; border-radius: 9px; background: #faeaf0;
+  color: #875566; font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.reader-chat-quote[hidden] { display: none; }
+.reader-chat-quote-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #readerTitle { max-width: 56%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #readerEditBtn { margin-left: auto; }
 #readerEditBtn + .reader-toc-btn { margin-left: 0; }
@@ -83,8 +107,8 @@
 .cr-view.has-tg-chip .chat-msg-list { padding-bottom: 48px; }
 .cr-view.has-tg-chip .cr-new-pill { bottom: 52px; }
 #appChatRoom:has(.voice-pop.open) .cr-together-chip { display: none; }   /* 录音条打开时让开 */
-/* 还没一起看：只有「一起看」按钮；一起看时只有「聊天」「不看了」 */
-#readerTgStart, .reader-together.pending #readerTgChat, .reader-together.pending #readerTgStop { display: none; }
+/* 还没一起看时只显示「一起看」 */
+#readerTgStart, .reader-together.pending .reader-tg-tools { display: none; }
 .reader-together.pending #readerTgStart { display: inline-block; }
 .reader-together.pending .reader-tg-name { color: #b39aa2; }
 .together-book-cover.together-av { width: 34px; height: 34px; border-radius: 50%; background: #eee center / cover no-repeat; box-shadow: none; }

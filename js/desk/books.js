@@ -152,6 +152,7 @@ function openReader(id, opts) {
   // 从书架打开时：有角色正和你一起看这本，就接着和 TA 看
   if (!cid) Object.keys(bookTogether).forEach(function(k) { if (bookTogether[k].bookId === id && findCharIdx(k) >= 0) cid = k; });
   readerState = { id: id, page: bookPageOf(id, meta.pos || 0), charId: cid };
+  setReaderDraftQuote(null);
   appReader.classList.add('active');
   renderReader();
 }
@@ -168,8 +169,14 @@ function renderReader() {
   document.getElementById('readerProgress').textContent = (page + 1) + ' / ' + pages.length + ' · ' + Math.floor((page + 1) / pages.length * 100) + '%';
   document.getElementById('readerPrev').disabled = page === 0;
   document.getElementById('readerNext').disabled = page >= pages.length - 1;
-  if (meta.pos !== pages[page]) { meta.pos = pages[page]; meta.readAt = Date.now(); saveBookMetas(); }
-  // 下面一条小栏：一起看时 TA 的头像 +「聊天」「不看了」；还没一起看时「一起看」（从聊天里点进来的是那个角色，从书架进来的先选人）
+  var viewed = meta.viewedPages || (meta.viewedPages = {});
+  if (meta.pos !== pages[page] || !viewed[page]) {
+    viewed[page] = true;
+    meta.pos = pages[page];
+    meta.readAt = Date.now();
+    saveBookMetas();
+  }
+  // 共读时显示角色和操作，还没共读时先选人
   var bar = document.getElementById('readerTogether'), c = readerTogetherChar(), pc = c || readerPendingChar();
   bar.style.display = '';
   bar.classList.toggle('pending', !c);
@@ -177,6 +184,8 @@ function renderReader() {
   if (pc) paintCharAvatar(bar.querySelector('.reader-tg-av'), pc);
   var nm = pc ? (pc.charAlias || pc.charName || 'TA') : '';
   bar.querySelector('.reader-tg-name').textContent = c ? '和「' + nm + '」一起看' : pc ? '叫「' + nm + '」一起看？' : '一个人在看';
+  if (readerDraftQuote && !readerDraftQuote.bookExcerpt) setReaderDraftQuote(readerPageQuote(meta, page));
+  syncReaderExcerptButton();
 }
 function readerTogetherChar() {
   var cid = readerState.charId;
@@ -208,18 +217,49 @@ document.getElementById('readerNext').addEventListener('click', function() { rea
 document.getElementById('backReader').addEventListener('click', function() { appReader.classList.remove('active'); if (typeof setReaderChat === 'function') setReaderChat(false); });
 // 点页面左边三分之一上一页、右边三分之一下一页；左右滑也能翻
 (function() {
-  var page = document.getElementById('readerPage'), sx = 0, sy = 0, moved = false;
-  page.addEventListener('pointerdown', function(e) { sx = e.clientX; sy = e.clientY; moved = false; });
+  var page = document.getElementById('readerPage'), sx = 0, sy = 0, moved = false, started = 0;
+  page.addEventListener('pointerdown', function(e) { sx = e.clientX; sy = e.clientY; moved = false; started = performance.now(); });
   page.addEventListener('pointermove', function(e) { if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) moved = true; });
   page.addEventListener('pointerup', function(e) {
+    if (readerSelectedExcerpt()) return;
     var dx = e.clientX - sx, dy = e.clientY - sy;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { readerGo(dx < 0 ? 1 : -1); return; }
-    if (moved) return;
+    if (moved || performance.now() - started > 300) return;
     // 点左边三分之一上一页，其余都是下一页（单手拇指够得着，用户要的）
     var r = page.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
     if (x < 0.33) readerGo(-1); else readerGo(1);
   });
 })();
+
+function readerSelectedExcerpt() {
+  var selection = window.getSelection(), body = document.getElementById('readerPage');
+  if (!selection || !selection.rangeCount || selection.isCollapsed) return null;
+  var range = selection.getRangeAt(0);
+  if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return null;
+  var raw = range.toString(), text = raw.trim();
+  if (!text) return null;
+  var prefix = document.createRange();
+  prefix.selectNodeContents(body);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  var offset = prefix.toString().length + raw.length - raw.trimStart().length;
+  return { bookId: readerState.id, page: readerState.page, offset: offset, text: text };
+}
+
+function readerExcerptQuote(meta, excerpt) {
+  var pages = bookPages(meta.id), source = bookText(meta.id), page = excerpt.page;
+  var pageStart = pages[page], pageEnd = pages[page + 1] || source.length;
+  var raw = source.slice(pageStart, pageEnd);
+  var at = pageStart + (raw.length - raw.trimStart().length) + excerpt.offset;
+  var earliest = page > 0 && meta.viewedPages && meta.viewedPages[page - 1] ? pages[page - 1] : pageStart;
+  var before = source.slice(Math.max(earliest, at - 500), at).trim();
+  var chapter = bookChapters(meta.id).filter(function(ch) { return ch.at <= at; }).pop();
+  var short = excerpt.text.replace(/\s+/g, ' ');
+  return {
+    author: '《' + meta.title + '》' + (chapter ? ' · ' + chapter.title : '') + ' · 第 ' + (page + 1) + ' 页',
+    text: short.length > 60 ? short.slice(0, 60) + '…' : short,
+    bookExcerpt: { bookId: meta.id, text: excerpt.text, before: before }
+  };
+}
 [['readerFontDown', -1], ['readerFontUp', 1]].forEach(function(b) {
   document.getElementById(b[0]).addEventListener('click', function() {
     readerFont = Math.max(13, Math.min(24, readerFont + b[1]));
@@ -313,7 +353,13 @@ document.getElementById('readerTgStart').addEventListener('click', function() {
 // ---------- 边看边聊（用户要的：以前要退出去发消息、再点一起看回来，很别扭） ----------
 // 下面小栏点「聊天」展开一个小聊天面板：最近的聊天记录、输入框（回车发出去，和聊天窗口一样不叫 TA）、❄️ 请 TA 回（生成中变 ⏹）、📖 带上这一页。
 // 发的就是聊天窗口里的消息：走聊天室那一套（appendUserMsg / sendMsg），面板只是照着聊天记录画一份；聊天窗口那边有变化（新消息、正在输入的预览）就跟着重画
-var readerChatOpen = false, readerChatQuote = false, readerChatTimer = null;
+var readerChatOpen = false, readerChatTimer = null;
+var readerDraftQuote = null;
+var readerChatPageButton = document.getElementById('readerChatPage');
+var readerChatQuoteButton = document.getElementById('readerChatQuote');
+var readerChatQuoteLabel = readerChatQuoteButton.querySelector('.reader-chat-quote-label');
+var readerChatInput = document.getElementById('readerChatInput');
+var readerChatToggle = document.getElementById('readerTgChat');
 function readerChatChar() { return readerTogetherChar(); }
 // 确保聊天室停在这个角色的聊天窗口（一起看是从聊天里点进来的，一般已经是了）
 function readerChatEnsureRoom(c) {
@@ -345,7 +391,12 @@ function readerChatRender() {
     if (text) {
       var row = document.createElement('div');
       row.className = 'reader-chat-msg ' + (mine ? 'me' : 'ta');
-      if (m.quote && mine) { var q = document.createElement('span'); q.className = 'reader-chat-q'; q.textContent = m.quote.author; row.appendChild(q); }
+      if (m.quote && mine) {
+        var q = document.createElement('span');
+        q.className = 'reader-chat-q';
+        q.textContent = m.quote.bookExcerpt ? '「' + m.quote.text + '」' : m.quote.author;
+        row.appendChild(q);
+      }
       row.appendChild(document.createTextNode(text));
       box.appendChild(row);
     }
@@ -373,43 +424,106 @@ if (typeof syncGenBtn === 'function') { var _readerSyncGen = syncGenBtn; syncGen
 function setReaderChat(on) {
   readerChatOpen = !!on && !!readerChatChar();
   appReader.classList.toggle('chat-open', readerChatOpen);
-  document.getElementById('readerTgChat').textContent = readerChatOpen ? '收起' : '聊天';
+  var label = readerChatOpen ? '收起聊天' : '展开聊天';
+  readerChatToggle.title = label;
+  readerChatToggle.setAttribute('aria-label', label);
+  readerChatToggle.setAttribute('aria-expanded', String(readerChatOpen));
   if (readerChatOpen) { readerChatRender(); }
 }
-document.getElementById('readerTgChat').addEventListener('click', function() { setReaderChat(!readerChatOpen); });
-document.getElementById('readerChatPage').addEventListener('click', function() {
-  readerChatQuote = !readerChatQuote;
-  this.classList.toggle('on', readerChatQuote);
-  showToast(readerChatQuote ? '下一条会带上这一页' : '不带这一页了', 'plain');
+readerChatToggle.addEventListener('click', function() { setReaderChat(!readerChatOpen); });
+function setReaderDraftQuote(quote) {
+  readerDraftQuote = quote;
+  readerChatPageButton.setAttribute('aria-pressed', String(!!quote && !quote.bookExcerpt));
+  readerChatQuoteButton.hidden = !quote;
+  readerChatQuoteLabel.textContent = quote ? (quote.bookExcerpt ? '「' + quote.text + '」' : quote.author) : '';
+}
+function readerPageQuote(meta, page) {
+  var text = bookPageText(meta.id, page).replace(/\s+/g, ' ');
+  return { author: '《' + meta.title + '》第 ' + (page + 1) + ' 页', text: text.length > 60 ? text.slice(0, 60) + '…' : text };
+}
+readerChatPageButton.addEventListener('click', function() {
+  var meta = bookMeta(readerState.id), page = readerState.page;
+  if (!meta || !readerChatChar()) return;
+  if (readerDraftQuote && !readerDraftQuote.bookExcerpt) { setReaderDraftQuote(null); return; }
+  setReaderDraftQuote(readerPageQuote(meta, page));
+  setReaderChat(true);
 });
-function readerChatSend() {
-  var inp = document.getElementById('readerChatInput'), text = inp.value.trim(), c = readerChatChar(), meta = bookMeta(readerState.id);
+readerChatQuoteButton.addEventListener('click', function() { setReaderDraftQuote(null); });
+function readerChatSend(allowEmptyExcerpt) {
+  var text = readerChatInput.value.trim(), c = readerChatChar(), meta = bookMeta(readerState.id);
+  if (!text && allowEmptyExcerpt && readerDraftQuote && readerDraftQuote.bookExcerpt) text = '聊聊这一段。';
   if (!text || !c || !meta || !readerChatEnsureRoom(c)) return;
-  if (readerChatQuote) {
-    var t = bookPageText(meta.id, readerState.page).replace(/\s+/g, ' ');
-    setQuote({ author: '《' + meta.title + '》第 ' + (readerState.page + 1) + ' 页', text: t.length > 60 ? t.slice(0, 60) + '…' : t });
-    readerChatQuote = false;
-    document.getElementById('readerChatPage').classList.remove('on');
-  }
-  appendUserMsg(text);
-  var hist = getChatHistory(findCharIdx(c.id)), last = hist[hist.length - 1];
-  if (last && last.role === 'user') { last.tg = meta.id; saveHistories(); readerTgPaintSoon(); }   // 一起看时聊的：回到聊天窗口用虚线框圈起来
+  appendUserMsg(text, { quote: readerDraftQuote, bookId: meta.id });
+  setReaderDraftQuote(null);
+  readerTgPaintSoon();
   if (typeof markChatActive === 'function') markChatActive();
-  inp.value = ''; inp.style.height = '';
+  readerChatInput.value = ''; readerChatInput.style.height = '';
   readerChatRender();
 }
-document.getElementById('readerChatInput').addEventListener('keydown', function(e) {
+readerChatInput.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); readerChatSend(); }
 });
-document.getElementById('readerChatInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 72) + 'px'; });
+readerChatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 72) + 'px'; });
+function readerRequestReply(c) {
+  readerTgPending = { charId: c.id, book: readerState.id, from: Date.now() };
+  sendMsg('', true);
+  readerChatRender();
+}
 document.getElementById('readerChatAsk').addEventListener('click', function() {
   var c = readerChatChar();
   if (!c || !readerChatEnsureRoom(c)) return;
-  if (document.getElementById('readerChatInput').value.trim()) readerChatSend();   // 打了字没按回车，先发出去
   if (genHere()) { stopGenerating(); return; }
-  readerTgPending = { charId: c.id, book: readerState.id, from: Date.now() };   // 这次 TA 回的也算一起看时聊的
-  sendMsg('', true);
-  readerChatRender();
+  readerChatSend(true);
+  readerRequestReply(c);
+});
+var readerExcerptButton = document.getElementById('readerTgExcerpt'), readerExcerptAtPress = null;
+function syncReaderExcerptButton() {
+  if (readerExcerptAtPress) return;
+  var excerpt = appReader.classList.contains('active') && readerChatChar() && readerSelectedExcerpt();
+  if (!excerpt) { readerExcerptButton.hidden = true; return; }
+  var page = document.getElementById('readerPage').getBoundingClientRect();
+  var lines = Array.from(window.getSelection().getRangeAt(0).getClientRects()).filter(function(r) {
+    return r.width > 0 && r.bottom > page.top && r.top < page.bottom;
+  });
+  if (!lines.length) { readerExcerptButton.hidden = true; return; }
+  var panel = appReader.getBoundingClientRect(), scale = panel.width / appReader.offsetWidth || 1;
+  var tail = lines[lines.length - 1];
+  readerExcerptButton.hidden = false;
+  var w = readerExcerptButton.offsetWidth * scale, h = readerExcerptButton.offsetHeight * scale;
+  var gap = 8 * scale;
+  var left = Math.max(page.left + gap, Math.min(tail.right - w, page.right - w - gap));
+  var top = tail.bottom + gap;
+  if (top + h > page.bottom - gap) top = Math.max(page.top + gap, lines[0].top - h - gap);
+  readerExcerptButton.style.left = (left - panel.left) / scale + 'px';
+  readerExcerptButton.style.top = (top - panel.top) / scale + 'px';
+}
+document.addEventListener('selectionchange', function() {
+  if (appReader.classList.contains('active')) syncReaderExcerptButton();
+});
+document.getElementById('readerPage').addEventListener('scroll', syncReaderExcerptButton, { passive: true });
+window.addEventListener('resize', syncReaderExcerptButton);
+readerExcerptButton.addEventListener('pointerdown', function() { readerExcerptAtPress = readerSelectedExcerpt(); });
+function clearReaderExcerptPress() {
+  readerExcerptAtPress = null;
+  syncReaderExcerptButton();
+}
+readerExcerptButton.addEventListener('pointercancel', clearReaderExcerptPress);
+window.addEventListener('pointerup', function(e) {
+  if (readerExcerptAtPress && !readerExcerptButton.contains(e.target)) clearReaderExcerptPress();
+});
+readerExcerptButton.addEventListener('click', function() {
+  var excerpt = readerSelectedExcerpt() || readerExcerptAtPress;
+  clearReaderExcerptPress();
+  var meta = bookMeta(readerState.id);
+  if (!meta || !readerChatChar()) return;
+  if (!excerpt || excerpt.bookId !== readerState.id || excerpt.page !== readerState.page) {
+    showToast('先长按选中想聊的文字', 'plain');
+    return;
+  }
+  setReaderDraftQuote(readerExcerptQuote(meta, excerpt));
+  window.getSelection().removeAllRanges();
+  syncReaderExcerptButton();
+  setReaderChat(true);
 });
 document.getElementById('readerTgStop').addEventListener('click', function() {
   var meta = bookMeta(readerState.id), c = readerTogetherChar();
@@ -419,6 +533,7 @@ document.getElementById('readerTgStop').addEventListener('click', function() {
     saveBookTogether();
     togetherNote(c, '📖 《' + meta.title + '》一起看到第 ' + (readerState.page + 1) + ' 页，先合上了', '（你们暂时不一起看《' + meta.title + '》了，一起看到了第 ' + (readerState.page + 1) + ' 页）');
     setReaderChat(false);
+    setReaderDraftQuote(null);
     renderReader();
   });
 });
@@ -426,11 +541,17 @@ document.getElementById('readerTgStop').addEventListener('click', function() {
 // 角色知道你们在一起看哪本、你看到哪一页（聊天窗口的现实感知里带一段）
 // 正在阅读器里和这个角色一起看（在书里发消息、点 ❄️）：只有这时才带书页内容，也先不要状态栏（用户要的）；在聊天窗口时角色只知道在看哪本、看到哪
 function readerOpenWith(char) { return !!char && appReader.classList.contains('active') && readerTogetherChar() === char; }
-function togetherContextLine(char) {
+function togetherContextLine(char, history) {
   var t = char && bookTogether[char.id], meta = t && bookMeta(t.bookId);
   if (!meta) return '';
   var pages = bookPages(meta.id), page = bookPageOf(meta.id, meta.pos || 0);
   if (!readerOpenWith(char)) return '【一起看书】你和{{user}}最近在一起看《' + meta.title + '》，看到第 ' + (page + 1) + ' / ' + pages.length + ' 页。{{user}}现在没在看书、在聊天窗口和你聊天，书里的内容等一起看的时候再聊，不用主动提。';
+  for (var i = (history || []).length - 1; i >= 0 && history[i].role === 'user'; i--) {
+    var message = history[i], excerpt = message.quote && message.quote.bookExcerpt;
+    if (!message.recalled && excerpt && excerpt.bookId === meta.id) {
+      return '【一起看书】请聊用户选中的片段。随附的前文只用来补充来龙去脉，只依据已提供的正文，不剧透。';
+    }
+  }
   return '【一起看书】你和{{user}}正在一起看《' + meta.title + '》，{{user}}现在看到第 ' + (page + 1) + ' / ' + pages.length + ' 页（约 ' + Math.floor((page + 1) / pages.length * 100) + '%）。这一页写的是：\n「' + bookPageText(meta.id, page) + '」\n' +
     '聊天时可以自然地聊这一页的内容、人物和你的感受，像坐在一起看书的人；不用每次都提，不要整段复述，也不要说出后面还没看到的情节。';
 }

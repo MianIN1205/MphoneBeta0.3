@@ -4,10 +4,12 @@ var crSendBtn = document.querySelector('.cr-send-btn');
 var crInput   = document.getElementById('crInput');
 
 // 追加用户消息到历史和界面（不触发 AI）；有待发送的引用就一起带上
-function appendUserMsg(text) {
+function appendUserMsg(text, options) {
   if (!text || openingChatCharIdx === -1) return;
   var m = { role: 'user', content: text, time: Date.now() };
-  if (pendingQuote) { m.quote = pendingQuote; clearQuote(); }
+  if (options && options.quote) m.quote = options.quote;
+  else if (pendingQuote) { m.quote = pendingQuote; clearQuote(); }
+  if (options && options.bookId) m.tg = options.bookId;
   getActiveHistory(openingChatCharIdx).push(m);
   saveHistories();
   renderHistMsg(m);

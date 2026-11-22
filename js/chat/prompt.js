@@ -327,7 +327,7 @@ function realWorldContext(char, hist) {
   if (typeof starAnonContextLine === 'function') { var sa = starAnonContextLine(char); if (sa) lines.push(sa); }   // 只有写的人自己知道
   if (typeof groupContextLine === 'function') { var gcl = groupContextLine(char); if (gcl) lines.push(gcl); }   // 在群里聊过的（成员能单独关掉）
   if (typeof assetContextLine === 'function') { var asl = assetContextLine(char); if (asl) lines.push(asl); }   // 资产：赛博小物（虚拟的）和现实持有
-  if (typeof togetherContextLine === 'function') { var tl = togetherContextLine(char); if (tl) lines.push(tl); }
+  if (typeof togetherContextLine === 'function') { var tl = togetherContextLine(char, hist); if (tl) lines.push(tl); }
   if (typeof lifeContextLines === 'function') lifeContextLines(char).forEach(function(l) { lines.push(l); });   // TA 的今天、记着要关心的事（js/char/life.js）
   // 生日临近（7 天内）：今天是谁的生日、还有几天
   var acc0 = resolveCharAccount(char), bc = birthDaysLeft(char.charBirth), bu = birthDaysLeft(acc0 && acc0.birthday);
@@ -579,7 +579,11 @@ function msgTextForAI(m) {
         : m.textImg ? (m.illus ? '（这一幕的配图）' : m.role === 'assistant' ? '[你发了一张照片：' + m.textImg + ']' : '[发来一张照片（用文字描述的画面）：' + m.textImg + ']')
         : m.voice ? ('[语音消息]' + voiceTextForAI(m.transcript, m.voice.transcriptStatus))
         : (m.content || (m.imgSrc ? '[图片消息]' : '')) + (m.photoNotes ? '\n看图记录：' + historyPhotoText(m) : '');
-  if (m.quote) c = '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' + c;
+  if (m.quote && m.quote.bookExcerpt) {
+    var passage = m.quote.bookExcerpt;
+    c = '【共读选段 · ' + m.quote.author + '】\n' +
+      (passage.before ? '前文：\n' + passage.before + '\n' : '') + '用户选中的正文：\n' + passage.text + '\n\n' + c;
+  } else if (m.quote) c = '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' + c;
   return c;
 }
 
