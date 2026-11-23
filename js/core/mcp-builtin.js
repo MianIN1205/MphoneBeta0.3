@@ -1,5 +1,5 @@
 // 眠花糖机 — 内置工具：直接在小手机里运行，不用另外部署 MCP 服务器；设置 → MCP 里一个开关就能用（mphone_mcp_builtin）
-// 天气（Open-Meteo）、读网页（Jina Reader）、歌词（LRCLIB）这三个要联网、都是免费不用密钥的接口；计算器、骰子 / 抽签 / 塔罗在手机里算，不联网
+// 天气、读网页、歌词要联网；计算器、骰子和抽签在本机运行。
 
 var MCP_BUILTINS = [
   { id: 'weather', name: '天气', icon: '🌤', desc: '实时天气与预报', tools: [
@@ -18,13 +18,11 @@ var MCP_BUILTINS = [
     { name: 'calculate', title: '计算', description: '计算一个数学式子，支持 + - * / ( ) ^ 和百分号',
       parameters: { type: 'object', properties: { expression: { type: 'string', description: '式子，比如 (128+64)*0.85' } }, required: ['expression'] } }
   ] },
-  { id: 'fun', name: '骰子 · 抽签 · 塔罗', icon: '🎲', desc: '离线随机', tools: [
+  { id: 'fun', name: '骰子 · 抽签', icon: '🎲', desc: '离线随机', tools: [
     { name: 'roll_dice', title: '掷骰子', description: '掷骰子，可以指定几个、几面',
       parameters: { type: 'object', properties: { count: { type: 'integer', description: '几个骰子，默认 1' }, sides: { type: 'integer', description: '几面，默认 6' } } } },
     { name: 'draw_lots', title: '抽签', description: '从给的几个选项里随机抽一个；不给选项就求一支签（上上签到下签）',
-      parameters: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' }, description: '选项（可选）' } } } },
-    { name: 'tarot', title: '抽塔罗牌', description: '抽塔罗牌（大阿卡纳 22 张，正位或逆位），可以带上想问的事',
-      parameters: { type: 'object', properties: { count: { type: 'integer', description: '抽几张，1～3，默认 1；3 张是过去 / 现在 / 未来' }, question: { type: 'string', description: '想问的事（可选）' } } } }
+      parameters: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' }, description: '选项（可选）' } } } }
   ] }
 ];
 var mcpBuiltinOn = mphoneStore.load('mphone_mcp_builtin', {}) || {};
@@ -122,32 +120,7 @@ function mbLots(a) {
   if (opts.length) return Promise.resolve('从「' + opts.join('」「') + '」里抽到了：' + opts[mbRand(opts.length)]);
   return Promise.resolve('求了一支签：' + MB_LOTS[mbRand(MB_LOTS.length)]);
 }
-var MB_TAROT = [
-  ['愚者', '新的开始、自由、冒险', '鲁莽、犹豫不决'], ['魔术师', '创造力、行动、自信', '欺骗、能力没用对地方'], ['女祭司', '直觉、秘密、内在的智慧', '忽视直觉、只看表面'],
-  ['皇后', '丰盛、温柔、滋养', '依赖、停滞'], ['皇帝', '稳定、掌控、责任', '固执、控制欲'], ['教皇', '传统、指引、信念', '打破常规、质疑'],
-  ['恋人', '爱、选择、和谐', '分歧、诱惑'], ['战车', '意志、前进、胜利', '失控、迷失方向'], ['力量', '勇气、温柔的力量、耐心', '自我怀疑、软弱'],
-  ['隐士', '独处、内省、寻找答案', '孤立、逃避'], ['命运之轮', '转机、好运、循环', '不顺、抗拒变化'], ['正义', '公平、真相、因果', '不公、逃避责任'],
-  ['倒吊人', '换个角度、等待、放下', '拖延、白白牺牲'], ['死神', '结束与新生、转变', '抗拒改变、停滞'], ['节制', '平衡、调和、耐心', '失衡、过度'],
-  ['恶魔', '束缚、欲望、执念', '挣脱、觉醒'], ['高塔', '突变、打破、觉醒', '躲过风波、害怕改变'], ['星星', '希望、治愈、灵感', '失望、信心不足'],
-  ['月亮', '不安、幻象、潜意识', '迷雾散去、真相浮现'], ['太阳', '快乐、成功、温暖', '短暂的低落、过度乐观'], ['审判', '重生、召唤、反思', '自我怀疑、不肯面对'],
-  ['世界', '圆满、完成、旅程的终点', '还差一步、未完成']
-];
-function drawTarotCards(count, allowReversed) {
-  var n = Math.min(3, Math.max(1, parseInt(count, 10) || 1)), pool = MB_TAROT.slice(), out = [];
-  for (var i = 0; i < n; i++) {
-    var c = pool.splice(mbRand(pool.length), 1)[0], reversed = allowReversed && mbRand(2) === 1;
-    out.push({ name: c[0], reversed: reversed, keywords: c[reversed ? 2 : 1] });
-  }
-  return out;
-}
-function mbTarot(a) {
-  var cards = drawTarotCards(a.count, true), pos = cards.length === 3 ? ['过去', '现在', '未来'] : [];
-  var out = cards.map(function(c, i) {
-    return (pos[i] ? pos[i] + '：' : '') + c.name + (c.reversed ? '（逆位）' : '（正位）') + '——' + c.keywords;
-  });
-  return Promise.resolve((a.question ? '问的是：' + a.question + '\n' : '') + '抽到了：\n' + out.join('\n'));
-}
-var MB_RUN = { weather: mbWeather, read_url: mbReadUrl, lyrics: mbLyrics, calculate: mbCalc, roll_dice: mbDice, draw_lots: mbLots, tarot: mbTarot };
+var MB_RUN = { weather: mbWeather, read_url: mbReadUrl, lyrics: mbLyrics, calculate: mbCalc, roll_dice: mbDice, draw_lots: mbLots };
 function mcpBuiltinCall(name, args) {
   var fn = MB_RUN[name];
   if (!fn) return Promise.resolve({ failed: true, text: '没有这个工具：' + name });

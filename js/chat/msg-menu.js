@@ -49,7 +49,7 @@ function openMsgCtx(bubble, listId, anchor, point) {
   var narr = !!(m && m.narr);
   var show = narr ? { edit: true, delete: true, select: true, selBelow: true, fav: true, copy: true } : {
     quote:  !!m,
-    edit:   !!m && !m.imgSrc && !m.sticker && !m.file && !m.textImg,
+    edit:   !!m && !m.imgSrc && !m.sticker && !m.file && !m.textImg && (!m.privateCard || m.privateCard.kind !== 'tarot'),
     recall: !!m && !m.recalled,
     // 重新生成：最新一组回复直接重新生成（旧版本留着切换）；更早的回复要先删掉后面的消息
     regen:     !!m && !genHere() && isLatest,

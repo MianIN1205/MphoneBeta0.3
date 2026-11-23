@@ -33,7 +33,8 @@ function ivStep(delta) {
 }
 
 function ivApply() {
-  imgViewerImg.style.transform = 'translate(' + ivState.x + 'px,' + ivState.y + 'px) scale(' + ivState.scale + ')';
+  imgViewerImg.style.transform = 'translate(' + ivState.x + 'px,' + ivState.y + 'px) scale(' + ivState.scale + ')' +
+    (ivState.rotation ? ' rotate(' + ivState.rotation + 'deg)' : '');
 }
 function ivReset() { ivState.scale = 1; ivState.x = 0; ivState.y = 0; ivApply(); }
 
@@ -43,6 +44,7 @@ function openImgViewer(src, info) {
   ivLastTap = 0;
   ivState.photos = Array.isArray(info.photos) && info.photos.length ? info.photos : [src];
   ivState.notes = info.notes || [];
+  ivState.rotation = info.rotation === 180 ? 180 : 0;
   ivNotes.open = false;
   ivState.index = Math.max(0, Math.min(ivState.photos.length - 1, info.index || 0));
   ivState.source = info.source || '';

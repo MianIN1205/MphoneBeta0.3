@@ -188,6 +188,7 @@ function appendPrivatePlusCard(role, m, list, empty) {
     result.bubble.classList.add('private-location-card');
   }
   result.bubble.classList.add('private-plus-card');
+  if (card.kind === 'tarot') renderTarotShare(result.bubble, card);
   if (card.kind === 'location' && card.coords && Number.isFinite(card.coords.lat) && Number.isFinite(card.coords.lon)) {
     var link = document.createElement('a');
     link.textContent = card.title;
