@@ -184,12 +184,13 @@ function mediaTestResult(text, ok) {
   el.textContent = text;
   el.style.color = ok === true ? '#4f9a6a' : ok === false ? '#c0506a' : '';
 }
-function mediaTestAsk(content) {
+function mediaTestAsk(content, cfg) {
   // 测试时原样发送图片 / 音频，不自动换成文字
-  return llmRequest([{ role: 'user', content: content }], { stream: false, cfg: readDraftApiConfig(), keepMedia: true, temperature: 0 })
+  return llmRequest([{ role: 'user', content: content }], { stream: false, cfg: cfg, keepMedia: true, temperature: 0 })
     .then(function(text) { return String(text || '').trim(); });
 }
 document.getElementById('mediaTestImgBtn').addEventListener('click', function() {
+  var cfg = readDraftApiConfig();
   var code = String(Math.floor(1000 + Math.random() * 9000));
   var c = document.createElement('canvas');
   c.width = 320; c.height = 160;
@@ -201,17 +202,21 @@ document.getElementById('mediaTestImgBtn').addEventListener('click', function() 
   mediaTestAsk([
     { type: 'text', text: '图片里写的是什么数字？只回答数字。' },
     { type: 'image_url', image_url: { url: c.toDataURL('image/png') } }
-  ]).then(function(reply) {
-    var ok = reply.indexOf(code) >= 0;
+  ], cfg).then(function(reply) {
+    var ok = reply === code;
+    if (ok) llmRememberMedia(cfg, { image: true });
     mediaTestResult(ok ? '✓ 识图正常：图里是 ' + code + '，模型回答「' + reply.slice(0, 30) + '」'
                        : '✗ 模型没认出来：图里是 ' + code + '，模型回答「' + reply.slice(0, 40) + '」', ok);
   }, function(err) { mediaTestResult('✗ 识图请求失败：' + err.message, false); });
 });
 document.getElementById('mediaTestAudioBtn').addEventListener('click', function() {
-  // 3 声 880Hz 的「嘟」，16kHz 单声道 WAV
-  var rate = 16000, n = rate * 2, pcm = new Int16Array(n);
+  var cfg = readDraftApiConfig();
+  if (llmProvider(cfg) === 'anthropic') return mediaTestResult('当前接入方式只能用文字传递语音内容。', false);
+  // 随机 2～5 声 880Hz 的「嘟」，16kHz 单声道 WAV
+  var count = 2 + Math.floor(Math.random() * 4);
+  var rate = 16000, n = Math.ceil(rate * count * 0.6), pcm = new Int16Array(n);
   for (var i = 0; i < n; i++) {
-    var t = i / rate, k = Math.floor(t / 0.6), inBeep = k < 3 && (t - k * 0.6) < 0.3;
+    var t = i / rate, k = Math.floor(t / 0.6), inBeep = (t - k * 0.6) < 0.3;
     pcm[i] = inBeep ? Math.round(Math.sin(2 * Math.PI * 880 * t) * 12000) : 0;
   }
   var bytes = new Uint8Array(44 + n * 2), v = new DataView(bytes.buffer);
@@ -226,10 +231,11 @@ document.getElementById('mediaTestAudioBtn').addEventListener('click', function(
   mediaTestAsk([
     { type: 'text', text: '这段音频里一共有几声「嘟」的提示音？只回答一个阿拉伯数字。' },
     { type: 'input_audio', input_audio: { data: btoa(bin), format: 'wav' } }
-  ]).then(function(reply) {
-    var ok = /3|三/.test(reply);
-    mediaTestResult(ok ? '✓ 语音正常：模型听到了 3 声，回答「' + reply.slice(0, 30) + '」'
-                       : '✗ 模型可能没听到音频：应为 3 声，模型回答「' + reply.slice(0, 40) + '」', ok);
+  ], cfg).then(function(reply) {
+    var ok = reply === String(count);
+    if (ok) llmRememberMedia(cfg, { audio: true });
+    mediaTestResult(ok ? '✓ 语音正常：模型听到了 ' + count + ' 声'
+                       : '✗ 应为 ' + count + ' 声，模型回答「' + reply.slice(0, 40) + '」', ok);
   }, function(err) { mediaTestResult('✗ 语音请求失败：' + err.message + '（这个模型或接口可能不支持音频输入）', false); });
 });
 

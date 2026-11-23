@@ -13,14 +13,42 @@ function llmProvider(cfg) {
 }
 function llmModelName(cfg) { return String(cfg.model || '').toLowerCase(); }
 
-// 能力判断：先按名字排除明确不支持的，其余先试，被拒后记住
-var llmMediaBlock = mphoneStore.load('mphone_media_block', {});   // { 模型名: { image: true, audio: true } }
+// 旧记录只存了模型名，无法归到具体接口，所以能力重新按接口记录。
+var llmMediaSupport = mphoneStore.load('mphone_media_support', {}) || {};
+function llmMediaKey(cfg) {
+  return JSON.stringify([String(cfg.url || '').trim().replace(/\/+$/, ''), cfg.model]);
+}
+function llmRememberMedia(cfg, support) {
+  var key = llmMediaKey(cfg);
+  llmMediaSupport[key] = Object.assign({}, llmMediaSupport[key], support);
+  mphoneStore.save('mphone_media_support', llmMediaSupport);
+}
 function llmCaps(cfg) {
   var m = llmModelName(cfg), anthropic = llmProvider(cfg) === 'anthropic';
   var noImage = /deepseek(?!.*vl)|o1-mini|o3-mini|qwq|(^|[-\/])r1\b|kimi-k2|-text-/.test(m);
-  var noAudio = anthropic || /claude|deepseek|grok|(^|[-\/])o[1-4]\b|kimi|glm|llama|qwen(?!.*omni)|gpt-(4|5)(?!.*audio)|mistral(?!.*voxtral)/.test(m);
-  var b = llmMediaBlock[cfg.model] || {};
-  return { image: !noImage && !b.image, audio: !noAudio && !b.audio };
+  var noAudio = /claude|deepseek|grok|(^|[-\/])o[1-4]\b|kimi|glm|llama|qwen(?!.*omni)|gpt-(4|5)(?!.*audio)|mistral(?!.*voxtral)/.test(m);
+  var support = llmMediaSupport[llmMediaKey(cfg)] || {};
+  return { image: support.image ?? !noImage, audio: !anthropic && (support.audio ?? !noAudio) };
+}
+
+function llmRejectedMedia(err, msgs, caps) {
+  if (!err || ![400, 415, 422].includes(err.status)) return {};
+  var message = String(err.message || '').toLowerCase();
+  if (/stream(?:ing)?|tool.call|function.call|流式|工具调用/.test(message)) return {};
+  var rejects = 'does not support|do not support|cannot accept|not supported|unsupported';
+  var mediaNames = { image: 'input_image|image_url|images?|vision|图片|图像', audio: 'input_audio|audio|音频|原音' };
+  var rejected = {};
+  Object.keys(mediaNames).forEach(function(kind) {
+    var type = kind === 'image' ? 'image_url' : 'input_audio';
+    if (!caps[kind] || !msgsHavePart(msgs, type)) return;
+    var name = '(?:' + mediaNames[kind] + ')';
+    var rejectBefore = new RegExp('(?:' + rejects + '|不支持|不接受)\\s*(?:the\\s+)?(?:input\\s+(?:type\\s+)?)?[`"\']?' + name +
+      '(?![\\w-]|[`"\']?\\s*(?:file|format|encoding|size|url|resolution|文件|格式|编码|大小|分辨率))');
+    var rejectAfter = new RegExp('(?:^|[^a-z_])' + name +
+      '[`"\']?\\s*(?:(?:inputs?|modality|content(?:\\s+type)?)\\s*)?(?:(?:is|are)\\s+)?(?:' + rejects + '|不受支持|不支持)');
+    if (rejectBefore.test(message) || rejectAfter.test(message)) rejected[kind] = false;
+  });
+  return rejected;
 }
 // 尽量关掉模型自带的思考（眠花糖机的思维链是自己写的，见 js/chat/prompt.js；关掉思维链时也不要模型自己想）
 // Claude 官方接口默认就不思考；OpenAI 兼容接口里 Gemini、GPT-5、o 系列可以用 reasoning_effort 调低。
@@ -50,7 +78,6 @@ function partsText(content) {
     : String(content || '');
 }
 
-// 整理消息：去空消息、换掉不支持的媒体、按接口要求合并
 function voiceTextForAI(transcript, status) {
   if (!transcript) return '（没有收到音频，也没有可用的转写）';
   if (status === 'manual') return '（语音文字由用户手动填写，可能是原话或声音描述；没有听到录音）：' + transcript;
@@ -59,18 +86,28 @@ function voiceTextForAI(transcript, status) {
   return '（仅收到语音' + label + '，没有听到录音，请按文字理解）：' + transcript;
 }
 
+function llmMediaContent(content, caps) {
+  if (!Array.isArray(content)) return content;
+  return content.map(function(part) {
+    if (part._historyPhotoLabel) return caps.image ? { type: 'text', text: part.text } : null;
+    if (part.type === 'image_url') {
+      return caps.image ? { type: 'image_url', image_url: part.image_url } :
+        { type: 'text', text: part._imageFallback || '[图片：当前模型看不到图片内容]' };
+    }
+    if (part.type === 'input_audio' && !caps.audio) {
+      return { type: 'text', text: voiceTextForAI(part._transcript, part._transcriptStatus) };
+    }
+    return part;
+  }).filter(Boolean);
+}
+
+// 整理消息：去空消息、换掉不支持的媒体、按接口要求合并
 function llmPrepare(msgs, cfg, caps) {
   var out = [];
   var strict = llmStrict(cfg);
   JSON.parse(JSON.stringify(msgs)).forEach(function(m) {
-    var c = m.content;
+    var c = llmMediaContent(m.content, caps);
     if (Array.isArray(c)) {
-      c = c.map(function(p) {
-        if (p._historyPhotoLabel) return caps.image ? { type: 'text', text: p.text } : null;
-        if (p.type === 'image_url' && !caps.image) return { type: 'text', text: '[图片：当前模型看不到图片内容]' };
-        if (p.type === 'input_audio' && !caps.audio) return { type: 'text', text: voiceTextForAI(p._transcript, p._transcriptStatus) };
-        return p;
-      }).filter(Boolean);
       if (c.every(function(p) { return p.type === 'text'; })) c = partsText(c);
     }
     if (Array.isArray(c) ? !c.length : !String(c || '').trim()) return;
@@ -301,27 +338,33 @@ function llmRequest(msgs, opts) {
   opts = opts || {};
   var cfg = opts.cfg || getApiCfg();
   if (!cfg.url || !cfg.key || !cfg.model) return Promise.reject(new Error('请先在设置中填写 API 地址、密钥并选择模型'));
+  var caps = opts.keepMedia ? { image: true, audio: true } : llmCaps(cfg);
   // 带工具（MCP）：走工具循环；模型不支持工具时改成普通回复并记住
   if (opts.tools && opts.tools.length && opts.callTool && !llmToolBlock[cfg.model]) {
     var plain = Object.assign({}, opts, { tools: null });
-    return llmToolChat(msgs, opts).catch(function(err) {
+    var toolStarted = false;
+    var toolOptions = Object.assign({}, opts, { callTool: function(name, args) {
+      toolStarted = true;
+      return opts.callTool(name, args);
+    } });
+    return llmToolChat(msgs, toolOptions).catch(function(err) {
       if (err && err.name === 'AbortError') throw err;
+      if (toolStarted) throw err;
+      var rejected = llmRejectedMedia(err, msgs, caps);
+      if (!opts.keepMedia && Object.keys(rejected).length) return attemptWithoutMedia(rejected);
       var em = String(err && err.message);
-      // 图片 / 音频的问题交给普通请求去处理（会自动改用文字）
-      if (!/tool|function/i.test(em)) {
-        if (/image|audio|vision|multimodal|input_audio|image_url|图片|音频/i.test(em)) return llmRequest(msgs, plain);
-        throw err;
-      }
+      if (!err || ![400, 422].includes(err.status) || /image|audio|vision|图片|音频/i.test(em) ||
+          !/tool|function/i.test(em) || !/unsupported|not support|unknown|unrecognized|不支持/i.test(em)) throw err;
       llmToolBlock[cfg.model] = true;
       mphoneStore.save('mphone_tool_block', llmToolBlock);
       showToast('这个模型不支持工具调用，已改成普通回复', 'error');
       return llmRequest(msgs, plain);
     });
   }
-  var provider = llmProvider(cfg);
-  var thinkOff = llmThinkOff(cfg);
-  function attempt(caps) {
-    var prepared = llmPrepare(msgs, cfg, caps);
+  function attempt(media, useThinkingOverride) {
+    var provider = llmProvider(cfg);
+    var thinkOff = useThinkingOverride ? llmThinkOff(cfg) : null;
+    var prepared = llmPrepare(msgs, cfg, media);
     var once = function(off) {
       return resolveMediaParts(prepared.messages, opts.onVoiceNotes).then(function() {
         var req = llmBuild(prepared, cfg, Object.assign({}, opts, { thinkOff: off }));
@@ -332,9 +375,10 @@ function llmRequest(msgs, opts) {
       });
     };
     if (!thinkOff) return once(null);
-    // 「关掉自带思考」的参数被拒（400 之类）：去掉再发一次，成功了就记住这个模型以后不再带
+    // 只在响应明确点名思考参数时移除该参数，避免把附件错误或一般 400 再发一遍。
     return once(thinkOff).catch(function(err) {
       if ((err && err.name === 'AbortError') || !err || !(err.status === 400 || err.status === 422)) throw err;
+      if (!/reasoning[_\s-]effort/i.test(String(err.message))) throw err;
       return once(null).then(function(t) {
         llmThinkBlock[cfg.model] = true;
         mphoneStore.save('mphone_think_block', llmThinkBlock);
@@ -342,22 +386,18 @@ function llmRequest(msgs, opts) {
       });
     });
   }
-  var caps = opts.keepMedia ? { image: true, audio: true } : llmCaps(cfg);
-  return attempt(caps).catch(function(err) {
-    if (opts.keepMedia || (err && err.name === 'AbortError')) throw err;
-    var hasImg = caps.image && msgsHavePart(msgs, 'image_url');
-    var hasAud = caps.audio && msgsHavePart(msgs, 'input_audio');
-    var msg = String((err && err.message) || '');
-    if (!(hasImg || hasAud) || !/image|audio|vision|multimodal|modalit|media|input_audio|image_url|content|unsupported|not support|invalid|图片|音频/i.test(msg)) throw err;
-    // 不支持图片 / 音频：去掉后重发一次，并记住这个模型
-    var aud = hasAud && (/audio|音频/i.test(msg) || !/image|vision|图片/i.test(msg));
-    var img = hasImg && (/image|vision|图片/i.test(msg) || !/audio|音频/i.test(msg));
-    var b = llmMediaBlock[cfg.model] = Object.assign({}, llmMediaBlock[cfg.model]);
-    if (aud) b.audio = true;
-    if (img) b.image = true;
-    mphoneStore.save('mphone_media_block', llmMediaBlock);
-    showToast('这个模型不支持' + (img && aud ? '图片和音频' : img ? '图片' : '音频') + '，已改用文字发送', 'error');
-    return attempt({ image: caps.image && !img, audio: caps.audio && !aud });
+  function attemptWithoutMedia(rejected) {
+    return attempt(Object.assign({}, caps, rejected), false).then(function(text) {
+      llmRememberMedia(cfg, rejected);
+      var kinds = Object.keys(rejected).map(function(kind) { return kind === 'image' ? '图片' : '音频'; });
+      showToast('当前接口不支持' + kinds.join('和') + '，已用文字发送', 'plain');
+      return text;
+    });
+  }
+  return attempt(caps, true).catch(function(err) {
+    var rejected = llmRejectedMedia(err, msgs, caps);
+    if (opts.keepMedia || !Object.keys(rejected).length) throw err;
+    return attemptWithoutMedia(rejected);
   });
 }
 

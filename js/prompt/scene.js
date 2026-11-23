@@ -100,6 +100,17 @@ function openPromptPreview() {
   renderPromptPreview(idx, char, drama);
   document.getElementById('promptPreviewOverlay').classList.add('open');
 }
+function promptPreviewMedia(message) {
+  if (message.voice) {
+    if (!message.transcript) return '无可用转写';
+    return message.voice.transcriptStatus === 'partial' ? '部分转写' : '仅转写';
+  }
+  if (message.imgSrc || message.textImg) {
+    return message.textImg || historyPhotoText(message) ? '仅画面描述' : '无画面描述';
+  }
+  return '';
+}
+
 function renderPromptPreview(idx, char, drama) {
   var list = document.getElementById('promptPreviewList'), totalEl = document.getElementById('promptPreviewTotal'), msgs;
   list.replaceChildren();
@@ -109,9 +120,16 @@ function renderPromptPreview(idx, char, drama) {
     msgs = buildMsgs(idx, drama ? getDramaHistory(idx) : getChatHistory(idx), null, true)
       .concat(format.map(function(m) { return Object.assign({}, m, { previewZone: 'after' }); }));
   } catch (e) { list.textContent = '无法预览提示词：' + e.message; return; }
+  var caps = llmCaps(getApiCfg(char));
   var slots = { before: [], history: [], after: [] }, total = 0, historyCount = 0;
   msgs.forEach(function(m) {
-    var text = typeof m.content === 'string' ? m.content : partsText(m.content) + '\n[图片 / 语音等多媒体内容]';
+    var content = llmMediaContent(m.content, caps);
+    var text = partsText(content), media = m.previewMedia;
+    if (Array.isArray(content)) {
+      var imageCount = content.filter(function(part) { return part.type === 'image_url'; }).length;
+      if (imageCount) media = imageCount === 1 ? '原图' : imageCount + ' 张原图';
+      if (content.some(function(part) { return part.type === 'input_audio'; })) media = '原音';
+    }
     var tokens = estTokens(text);
     total += tokens;
     if (m.previewZone === 'history' && m.promptDepth === undefined) historyCount++;
@@ -123,6 +141,12 @@ function renderPromptPreview(idx, char, drama) {
     title.className = 'pp-heads';
     title.textContent = m.previewLabel || (heading && heading[1]) || text.replace(/\s+/g, ' ').trim();
     head.append(title);
+    if (media) {
+      var badge = document.createElement('span');
+      badge.className = 'pp-depth';
+      badge.textContent = media;
+      head.append(badge);
+    }
     if (m.promptDepth !== undefined) {
       var depth = document.createElement('span');
       depth.className = 'pp-depth';
@@ -147,6 +171,14 @@ function renderPromptPreview(idx, char, drama) {
     heading.className = 'pp-section-title';
     heading.textContent = pair[1] + (history ? ' · 从旧到新 · ' + historyCount + ' 条' : '');
     section.append(heading, ...items);
+    if (history && msgs.some(function(m) { return m.previewMedia || Array.isArray(m.content); })) {
+      var guide = document.createElement('p');
+      guide.className = 'pp-media-hint';
+      guide.textContent = char.isGroup && groupSoloOn(char)
+        ? '这里按群聊配置预估。成员各用自己的模型时，附件以各自接口支持为准。'
+        : '附件按当前配置预估。发送时可能因接口兼容或音频处理问题改用文字，回查资料会在发送时另行加入。';
+      heading.after(guide);
+    }
     list.appendChild(section);
   });
   totalEl.textContent = '约 ' + total.toLocaleString() + ' Token · 按文字估算';

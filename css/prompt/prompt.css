@@ -448,6 +448,7 @@
 .pp-history { border-block: 1px solid #eed4df; }
 .pp-history > summary { cursor: pointer; padding: 8px 4px; }
 .pp-history > .prompt-preview-item { margin: 0 0 5px; }
+.pp-media-hint { margin: 0 4px 7px; font-size: 11px; line-height: 1.5; color: #806570; }
 
 /* 剧情设置（默认剧情预设上面那张卡片，js/prompt/presets.js） */
 .plot-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }

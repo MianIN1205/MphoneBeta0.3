@@ -526,7 +526,9 @@ function buildMsgs(idx, histOverride, historySession, preview) {
     var c = historyVoicePrompt(historyPhotoPrompt(msgContentForAI(m, history.length - 1 - i >= richFrom, char), m, historySession, true), m, historySession);
     // 聊天窗口：以前存下的没标点的气泡补个句号再给 TA 看，免得 TA 学着不写标点（小手机靠标点分气泡）
     if (!isDrama && m.role === 'assistant' && typeof c === 'string' && /[\u4e00-\u9fffA-Za-z0-9]$/.test(c)) c += '。';
-    return { role: m.role, content: c };
+    var entry = { role: m.role, content: c };
+    if (preview && !m.recalled) entry.previewMedia = promptPreviewMedia(m);
+    return entry;
   }).reverse();
   // 聊天和剧情的记忆互通：带上另一边的前情（剧情窗口还带聊天的记忆总结），再说明现在在哪个空间
   var cross = crossSceneContext(idx, isDrama);
@@ -601,10 +603,12 @@ function msgContentForAI(m, rich, char) {
   // 图片前面带一句文字：有些接口（如部分 Gemini 中转）不接受只有图片、没有文字的消息
   if (m.imgSrc && mediaCfg.vision) {
     var photos = chatMessagePhotos(m);
+    var notes = historyPhotoText(m);
     var parts = [{ type: 'text', text: (m.quote ? '「引用 ' + m.quote.author + '：' + m.quote.text + '」\n' : '') + '（我发了一张图片）' }];
     if (photos.length > 1) parts[0].text = parts[0].text.replace('一张图片',' ' + photos.length + ' 张图片');
-    photos.forEach(function(photo) {
-      parts.push({ type: 'image_url', image_url: { url: photo.src } });
+    photos.forEach(function(photo, index) {
+      parts.push({ type: 'image_url', image_url: { url: photo.src },
+        _imageFallback: !index && notes ? '看图记录（本轮未附原图）：' + notes : undefined });
     });
     return parts;
   }
