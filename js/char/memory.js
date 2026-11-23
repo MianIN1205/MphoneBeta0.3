@@ -139,6 +139,7 @@ function memAdd(char, data) {
   var date = data.when ? memParseDate(data.when, data.whenPrecision) : null;
   var dup = memList(char.id).find(function(m) {
     if (Boolean(m.tl) !== Boolean(data.tl)) return false;
+    if ((m.scene === 'drama') !== (data.scene === 'drama')) return false;
     if (date && m.when && (date.time !== m.when || date.precision !== (m.whenPrecision || 'day'))) return false;
     if (m.text === text) return true;
     if (data.exactOnly) return false;
@@ -355,13 +356,6 @@ function memoryContextFor(char, hist) {
     var precious = memList(char.id).filter(function(m) { return m.type === 'precious' && !m.tl; }).sort(function(a, b) { return a.time - b.time; }).slice(-12);
     var moods = memMoodsOf((hist || []).slice(-4).filter(function(m) { return m.role === 'user'; }).map(function(m) { return typeof m.content === 'string' ? m.content : ''; }).join('\n'));
     var rec = memRecall(char, memQueryOf(hist), cfg.topK, { skipPrecious: true, moods: moods });
-    // 相关的不够数时，用最近记下的补上，问得比较笼统时也想得起东西
-    if (rec.length < cfg.topK) {
-      var have = rec.map(function(r) { return r.m; });
-      memList(char.id).filter(function(m) { return m.type !== 'precious' && !m.tl && have.indexOf(m) < 0; })
-        .sort(function(a, b) { return b.time - a.time; }).slice(0, cfg.topK - rec.length)
-        .forEach(function(m) { rec.push({ m: m, s: 0 }); });
-    }
     // 关系里程碑一直带着；其余按「记忆最多占用」放：超出时先少想起几条相关的，再少放几条最早的珍贵回忆
     var msText = (memMilestones[char.id] || {}).text || '', knowText = (memKnow[char.id] || {}).text || '';
     if (cfg.budget > 0 && typeof estTokens === 'function') {
@@ -395,7 +389,7 @@ function memoryContextFor(char, hist) {
       out += (out ? '\n\n' : '') + '【记下新记忆】如果这次对话里出现了值得记住的新信息，在回复最后另起一行写 <记忆 类型="' +
         allowed.map(function(t) { return MEM_TYPE_NAME[t]; }).join('|') + '">一句话</记忆>，可以写多条，用户看不到（' +
         allowed.map(function(t) { return desc[t]; }).join('；') + '）。优先记用户本人和你们之间发生的事：用户亲口说过的偏好、习惯、在意或介意的细节，以及你们的约定、共同经历和有来由的小梗。稳定的喜好、边界和以后还要履行的约定，优先记长期；对你们特别有意义的共同经历可以记珍贵。近期可能接着聊、但不会长期有用的放短期，同一件事的零碎进展写成一条。保留一处有来由的具体细节；没有后续意义的背景不必另记。' +
-        '从用户说过或双方实际经历过的事取材；不要把你的猜测、角色独自过的日常、NPC 背景或布景当作用户记忆。剧情只记双方共同经历里值得延续的细节，不当成用户现实生活的事实。没有新信息就不写，已经记得的不要重复记。' +
+        '重视这些能接着聊的小事：谁先提的、做了什么、在哪、具体的称呼或原词、为什么在意。分清用户说的、角色感受和剧情。只从用户亲口说过或双方经历的事取材。普通动态、寒暄、猜测和角色独处时的小事不用记。时间、地点、人名和约定只按原话，改口时记下新说法和它更新了什么。' +
         (cfg.types.long ? '另外，' + (youName = youName || (typeof resolveCharAccount === 'function' && resolveCharAccount(char).nickname) || '用户') + '的生活有了长久的变化或重要节点（搬家、换工作或学校、毕业、生病和康复、换了或没了常用的东西、开始养宠物、身边重要的人有了变化…）时，记一条时间线：<记忆 类型="时间线" 时间="YYYY-MM-DD">现在怎样</记忆>（时间是大概哪天发生的，不知道就不写；写清楚变化之后的样子，比如「换了环境，现在没有电脑」），零碎的小事照旧记短期。' : '') +
         '长期和珍贵的可以多写三个属性，像人记住一件事时连着当时的感觉：情绪="' + MEM_EMOS.join('|') + '"（选一个）强度="1|2|3"（越强越难忘）线索="3～6 个这件事里具体的东西，用顿号隔开"（看到的、听到的、闻到的、吃到的、摸到的、地点、物件，只写这件事里真有的，不要编）。' +
         '比如 <记忆 类型="珍贵" 情绪="心疼" 强度="3" 线索="病房、蚊子、凌晨三点">她住院那晚一直说想回家</记忆>';
@@ -414,11 +408,17 @@ function memTagAttrs(s) {
 }
 var MEM_TYPE_BY_NAME = { '短期': 'short', '长期': 'long', '珍贵': 'precious' };
 // scene：'drama' = 在剧情窗口里记下的
-function memExtractTags(char, raw, scene) {
-  var cfg = memCfgOf(char);
+function memExtractTags(char, raw, scene, history) {
+  var cfg = memCfgOf(char), dailyCount = 0;
   return String(raw || '').replace(MEM_TAG_RE, function(_, attrs, text) {
     var a = memTagAttrs(attrs), tn = String(a['类型'] || '').trim(), tl = tn === '时间线', type = tl ? 'long' : (MEM_TYPE_BY_NAME[tn] || 'long');
-    if (char && cfg.on && cfg.write && cfg.types[type]) memAdd(char, { type: type, text: text, source: 'self', scene: scene, emo: a['情绪'], emoW: a['强度'], cues: a['线索'], tl: tl, when: a['时间'] });
+    if (!char || !cfg.on || !cfg.write || (scene === 'feed' && !cfg.feed)) return '';
+    if (tn === '当天') {
+      if (!char.isGroup && scene === 'chat' && history && dailyCount++ < 2) memDayAddFromReply(char, history, a['时间'], text);
+    } else if (cfg.types[type]) {
+      memAdd(char, { type: type, text: text, source: scene === 'feed' ? 'feed' : 'self', scene: scene,
+        emo: a['情绪'], emoW: a['强度'], cues: a['线索'], tl: tl, when: a['时间'], exactOnly: scene === 'chat' || scene === 'drama' });
+    }
     return '';
   }).replace(/\n{3,}/g, '\n\n').trim();
 }

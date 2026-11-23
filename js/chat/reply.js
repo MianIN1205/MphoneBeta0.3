@@ -91,7 +91,7 @@ function commitAssistantReply(hist, raw, list, empty, firstMeta) {
   // 角色悄悄记下的记忆：存进记忆库，不显示
   if (typeof memExtractTags === 'function') {
     var hc = charOfHistory(hist);
-    raw = memExtractTags(hc, raw, hc && dramaHistories[hc.id] === hist ? 'drama' : 'chat');
+    raw = memExtractTags(hc, raw, hc && dramaHistories[hc.id] === hist ? 'drama' : 'chat', hist);
   }
   // 聊天窗口关了动描：新回复里 *星号* 包住的动作描写直接去掉（已经存下的消息不动）
   var rc = charOfHistory(hist);
@@ -542,12 +542,14 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     for (var i = hist.length - 1; i >= 0 && hist[i].role === 'user'; i--) currentTurn.unshift(hist[i]);
     var records = historyQuotes(hist, currentTurn);
     var question = currentTurn.filter(function(m) { return !m.recalled && !m.note && !m.imgSrc && !m.file; }).map(function(m) { return m.voice ? m.transcript || '' : m.content; }).join(' ');
-    if (!records.length && /以前|之前|前几天|上次|那天|昨[天晚]|前天|刚才|发过|说过|查过|那张|那段|那份|哪条|原图/.test(question)) {
+    var correctingOldTopic = isChatView && historyCorrectingTopic(question);
+    if (!correctingOldTopic && !records.length && (isGrp || !isChatView || historyQueryKind(question)) &&
+        /以前|之前|前几天|上次|那天|昨[天晚]|前天|刚才|发过|说过|查过|那张|那段|那份|哪条|原图/.test(question)) {
       var hit = searchChatHistory(hist, question, currentTurn);
       if (hit) records.push(hit);
     }
     var baseMsgs = withHistoryPhotoRules(withChatHistoryReads(msgs, records, cfg, historySession, question), historySession);
-    var canRecall = !isGrp && hist.length > currentTurn.length;
+    var canRecall = !isGrp && !correctingOldTopic && hist.length > currentTurn.length;
     if (canRecall) baseMsgs = baseMsgs.concat({ role: 'system', content:
       '如果需要确认当前对话中某条旧记录，而眼前没有足够资料，可以先只输出 <回查记录>能定位原记录的关键词（如 昨天 奶茶 图片）</回查记录>，收到回查结果后再回答。每次回复只能查一次。若已有找回的记录可回答，直接继续。没找到或不确定时请说明。' });
     var errorContext = isChatView && !isGrp && typeof replyErrorContext === 'function' ? replyErrorContext(hist) : null;
@@ -555,14 +557,23 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     var archiveContext = isChatView && !isGrp ? replyArchiveContext(replyChar, question) : null;
     if (archiveContext) baseMsgs.push(archiveContext);
     var rules = [].concat(isChatView ? chatFormatRules(replyChar) : dramaFormatRules(replyChar), cotRules(!isChatView, replyChar));
-    var replyTools = records.some(function(record) { return record.tool; }) && !/重新|最新|现在.*查/.test(question) ? [] : mcpTools;
+    var replyFocus = isChatView && !isGrp && currentTurn.length ? '先接住用户最后这一轮说的话。带日期的旧聊天、记忆总结和工具返回的文字用来补充当前问题。不要把旧聊天说成用户刚说过，也不要跳去回答旧问题。' +
+      (correctingOldTopic ? ' 用户正在纠正串话。承认接错后，回到眼前的话题；不确定在问什么就问一句，别猜用户还说了别的话。' : '') +
+      (question.trim() ? '\n本轮用户的文字如下（多条消息按发送顺序）：\n' + question.trim().slice(-600) : '') : '';
+    if (replyFocus) rules.push({ role: 'system', content: replyFocus });
+    var replyTools = records.some(function(record) { return record.tool; }) && !/重新|最新|现在.*查/.test(question) ? [] : mcpToolsForTurn(mcpTools, question);
+    var offeredTools = new Set(replyTools.map(function(tool) { return tool.name; }));
     var options = {
     stream: true,
     signal: ctrl.signal,
     onVoiceNotes: function(sent) { historySession.sentVoices = sent; },
     cfg: cfg,
     tools: replyTools,
-    callTool: replyTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey, recordToolCall); } : null,
+    toolReplyContext: replyFocus,
+    callTool: replyTools.length ? function(name, args) {
+      if (!offeredTools.has(name)) return '这轮没有启用该工具。请继续回答用户当前的问题。';
+      return mcpCallFromLLM(name, args, gKey, recordToolCall);
+    } : null,
     toolLabel: function(name) { var hit = mcpToolMap[name]; return hit ? (hit.tool.title || hit.tool.name) : name; },
     onStatus: function(text) {
       typing.bubble.textContent = text;

@@ -4,16 +4,17 @@
 const settingsScreen = document.getElementById('settingsScreen');
 const dockSettings   = document.getElementById('dockSettings');
 const backBtn        = document.getElementById('backBtn');
+const mainApiTab      = document.querySelector('#settingsSubnav [data-stab="main-api"]');
 
 dockSettings.addEventListener('click', function() {
+  restoreAppliedApiDraft();
   settingsScreen.classList.add('active');
-  if (apiUrlInput.value.trim() && apiKey.value.trim()) {
-    refreshBtn.click();
-  }
+  mainApiTab.click();
+  if (apiUrlInput.value.trim() && apiKey.value.trim()) refreshApiModels(false, true);
 });
 backBtn.addEventListener('click', function() {
   settingsScreen.classList.remove('active');
-  setApiModelPopup(false);
+  resetApiModelList();
   setApiPresetDrawer('');
 });
 
@@ -145,7 +146,8 @@ function presetApiConfig(preset) {
 function renderApiConnectionStatus() {
   var applied = readAppliedApiConfig();
   var dirty = !sameApiConfig(applied, readDraftApiConfig());
-  var status = dirty ? '有修改待应用' : applied.model ? '当前模型：' + applied.model : '未选择模型';
+  var status = applied.model ? '默认模型：' + applied.model : '未应用默认模型';
+  if (dirty) status += ' · 修改待应用';
   if (apiConnectionStatus.textContent !== status) apiConnectionStatus.textContent = status;
 }
 
@@ -198,6 +200,14 @@ function setDraftApiConfig(cfg) {
   tempSlider.value = cfg.temp;
   setDraftApiModel(cfg.model);
   updateSliderThumb();
+}
+function restoreAppliedApiDraft() {
+  var cfg = readAppliedApiConfig();
+  setApiPresetDrawer('');
+  setDraftApiConfig(cfg);
+  renderApiPresets(apiPresets.findIndex(function(preset) {
+    return preset && sameApiConfig(presetApiConfig(preset), cfg);
+  }));
 }
 function applyApiConfig(cfg) {
   mphoneStore.save('mphone_api_url', cfg.url);

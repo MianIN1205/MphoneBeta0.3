@@ -717,7 +717,7 @@ function fillCharForm(char) {
 }
 
 // 扩展页 — 记忆权限：开关、读取条数、可写入的类型、短期保留天数、动态是否记入
-var DEFAULT_MEM_CFG = { on: true, read: true, topK: 6, write: true, types: { short: true, long: true, precious: true }, shortDays: 7, feed: true, milestone: true, budget: 0 };   // 0 = 不限制记忆额度
+var DEFAULT_MEM_CFG = { on: true, read: true, topK: 6, write: true, types: { short: true, long: true, precious: true }, shortDays: 7, feed: false, milestone: true, budget: 0 };   // 0 = 不限制记忆额度
 function fillMemCfgForm(m) {
   m = Object.assign({}, DEFAULT_MEM_CFG, m || {});
   var types = Object.assign({}, DEFAULT_MEM_CFG.types, m.types || {});

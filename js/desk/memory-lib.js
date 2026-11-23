@@ -75,7 +75,7 @@ function memSearchTokens(value) {
   return String(value || '').normalize('NFKC').toLowerCase().trim().split(/\s+/).filter(Boolean);
 }
 function openMemDetail(id) {
-  if (memLibChar !== id) { memSearch.value = ''; memSearchYear.value = ''; memSearchMonth.value = ''; memLibEmo = ''; }
+  if (memLibChar !== id) { memSearch.value = ''; memSearchYear.value = ''; memSearchMonth.value = ''; memLibEmo = ''; memDaysOffset = 30; }
   memLibChar = id;
   document.getElementById('memHome').style.display = 'none';
   document.getElementById('memDetail').style.display = '';
@@ -139,9 +139,11 @@ function appendMemPage() {
 memLoadMore.addEventListener('click', appendMemPage);
 function renderMemResults(char, memories) {
   var box = document.getElementById('memList'), terms = memSearchTokens(memSearch.value);
-  memUpdateFilterYears(memories);
+  var book = memDayBook(char);
+  memUpdateFilterYears(memories.concat(Object.keys(book.days).map(function(date) { return { when: Date.parse(date + 'T12:00:00') }; })));
   var year = memSearchYear.value, month = memSearchMonth.value;
   var searching = terms.length > 0 || !!year || !!month;
+  var dailyHits = renderMemDays(char, book, searching, terms, year, month);
   box.textContent = '';
   memPage = null;
   memLoadMore.hidden = true;
@@ -160,7 +162,7 @@ function renderMemResults(char, memories) {
     }).filter(Boolean).sort(function(a, b) {
       return b.score - a.score || (b.memory.when || b.memory.time) - (a.memory.when || a.memory.time);
     });
-    memSearchStatus.textContent = hits.length ? '找到 ' + hits.length + ' 条记忆' : '没找到匹配的记忆';
+    memSearchStatus.textContent = hits.length || dailyHits ? '找到 ' + (hits.length + dailyHits) + ' 条记录' : '没找到匹配的记忆';
     displayMemPage(box, char, hits.map(function(hit) { return hit.memory; }), false);
     return;
   }
@@ -180,12 +182,146 @@ function renderMemResults(char, memories) {
     return memLibFilter === 'tl' ? (b.when || 0) - (a.when || 0) || b.time - a.time : b.time - a.time;
   });
   if (!list.length) {
-    box.innerHTML = memLibFilter === 'tl' ? '<div class="auto-hint desk-empty">还没有时间线。你的生活有了长久的变化（搬家、换工作、没了电脑…）时 TA 会记一笔，每次聊天都记着；你也可以点右上角「添加」。</div>' :
+    box.innerHTML = memLibFilter === 'tl' ? '<div class="auto-hint desk-empty">还没有生活节点。搬家、换工作等长期变化可以点右上角「添加」。</div>' :
       '<div class="auto-hint desk-empty">还没有' + MEM_TYPE_NAME[memLibFilter] + '记忆。聊天时 TA 会自己记下，你也可以点右上角「添加」。</div>';
     return;
   }
   displayMemPage(box, char, list, memLibFilter === 'tl');
 }
+
+var memDaysOffset = 30, memDayEditing = null;
+var memDayOverlay = document.getElementById('memDayOverlay');
+var memDayStart = document.getElementById('memDayStart'), memDayEnd = document.getElementById('memDayEnd');
+var memDayInput = document.getElementById('memDayText');
+
+function memDayCard(char, date, day) {
+  var card = document.createElement('article'), head = document.createElement('div'), body = document.createElement('div');
+  card.className = 'mem-card'; head.className = 'mem-day-head'; body.className = 'mem-day-text';
+  var edit = document.createElement('button');
+  edit.type = 'button'; edit.className = 'anniv-flag'; edit.textContent = '编辑';
+  edit.addEventListener('click', function() { openMemDayEdit(char, date); });
+  head.append(date, edit);
+  body.textContent = memDayText(day);
+  card.append(head, body);
+  if (day.notes.some(function(note) { return note.quote; })) {
+    var details = document.createElement('details'), label = document.createElement('summary');
+    details.className = 'mem-day-quotes'; label.textContent = '查看当时的原话'; details.append(label);
+    details.addEventListener('toggle', function() {
+      if (!details.open || details.childElementCount > 1) return;
+      var history = getChatHistory(findCharIdx(char.id));
+      var shown = new Set();
+      day.notes.forEach(function(note) {
+        var original = history.find(function(m) { return note.ref && m.historyRef === note.ref; });
+        var text = original ? historyPlainText(original) : note.quote;
+        if (!text || shown.has(text)) return;
+        shown.add(text);
+        var quote = document.createElement('blockquote');
+        quote.textContent = text; details.append(quote);
+      });
+      if (details.childElementCount === 1) details.append('原消息已撤回。');
+    });
+    card.append(details);
+  }
+  return card;
+}
+
+function renderMemDays(char, book, searching, terms, year, month) {
+  var section = document.getElementById('memDaysSection'), list = document.getElementById('memDaysList');
+  var more = document.getElementById('memDaysMore');
+  list.replaceChildren();
+  more.hidden = true;
+  section.hidden = !searching && memLibFilter !== 'tl';
+  if (section.hidden) return 0;
+  var dates = Object.keys(book.days).sort().reverse().filter(function(date) {
+    var day = book.days[date], text = (memDayText(day) + ' ' + day.notes.map(function(note) { return note.quote || ''; }).join(' ')).normalize('NFKC').toLowerCase();
+    return (!year || date.slice(0, 4) === year) && (!month || date.slice(5, 7) === month) && terms.every(function(term) { return text.includes(term); });
+  });
+  section.hidden = searching && !dates.length;
+  var entries = dates.map(function(date) { return { date: date, day: book.days[date] }; });
+  if (!searching) {
+    book.periods.forEach(function(period) {
+      var children = entries.filter(function(entry) { return entry.date >= period.from && entry.date <= period.to; });
+      entries = entries.filter(function(entry) { return !children.includes(entry); });
+      entries.push({ date: period.to, period: period, children: children });
+    });
+    entries.sort(function(a, b) { return b.date.localeCompare(a.date); });
+  }
+  entries.slice(0, memDaysOffset).forEach(function(entry) {
+    if (!entry.period) { list.append(memDayCard(char, entry.date, entry.day)); return; }
+    var card = document.createElement('article'), head = document.createElement('div');
+    var details = document.createElement('details'), summary = document.createElement('summary');
+    var body = document.createElement('div'), edit = document.createElement('button');
+    card.className = 'mem-card'; head.className = 'mem-day-head'; details.className = 'mem-day-period'; body.className = 'mem-day-text';
+    summary.textContent = '展开每天的记录（' + entry.children.length + ' 天）';
+    body.textContent = entry.period.text;
+    edit.type = 'button'; edit.className = 'anniv-flag'; edit.textContent = '编辑这段';
+    edit.addEventListener('click', function() { openMemDayEdit(char, entry.period.from, entry.period); });
+    head.append(entry.period.from + ' 至 ' + entry.period.to, edit);
+    details.append(summary);
+    details.addEventListener('toggle', function() {
+      if (details.open && details.childElementCount === 1) entry.children.forEach(function(child) { details.append(memDayCard(char, child.date, child.day)); });
+    });
+    card.append(head, body);
+    if (entry.children.length) card.append(details);
+    list.append(card);
+  });
+  more.hidden = entries.length <= memDaysOffset;
+  if (!entries.length && !searching) list.textContent = '还没有相处记录。聊到具体的小事时，TA 可以补记在当天。';
+  return dates.length;
+}
+
+function openMemDayEdit(char, date, period) {
+  var today = memDayKey(Date.now()), range = !!period;
+  memDayEditing = { char: char, period: period };
+  document.getElementById('memDayEditTitle').textContent = range ? '整理几天' : date ? '编辑当天' : '补记一天';
+  memDayStart.max = memDayEnd.max = today;
+  memDayStart.value = date || today;
+  memDayStart.disabled = !!date && !range;
+  memDayEnd.value = range && period.to ? period.to : today;
+  memDayEnd.hidden = document.getElementById('memDayEndLabel').hidden = !range;
+  memDayEnd.required = range;
+  if (range) memDayInput.value = period.text || '';
+  else loadMemDayDraft();
+  memDayOverlay.classList.add('open');
+}
+
+function loadMemDayDraft() {
+  var day = memDayDraft(memDayBook(memDayEditing.char), memDayStart.value);
+  memDayEditing.reviewed = day.notes.length;
+  memDayInput.value = memDayText(day);
+}
+document.getElementById('memDayStart').addEventListener('change', function() {
+  if (memDayEditing && !memDayEditing.period) loadMemDayDraft();
+});
+document.getElementById('memDayForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  if (!memDayEditing) return;
+  var char = memDayEditing.char, period = memDayEditing.period, book = memDayBook(char);
+  var from = memDayStart.value, to = memDayEnd.value, text = memDayInput.value.trim();
+  if (!text || !memDayValid(from) || (period && (!memDayValid(to) || from >= to))) {
+    showToast('请填写内容并检查日期范围', 'plain'); return;
+  }
+  if (period) {
+    if (book.periods.some(function(other) { return other !== period && from <= other.to && to >= other.from; })) {
+      showToast('这段日期已在另一段记录里，可以去编辑那一段', 'plain'); return;
+    }
+    if (!book.periods.includes(period)) book.periods.push(period);
+    Object.assign(period, { from: from, to: to, text: text });
+  } else {
+    var day = memDayDraft(book, from);
+    day.text = text;
+    day.reviewed = Math.min(memDayEditing.reviewed, day.notes.length);
+    book.days[from] = day;
+  }
+  saveMemDays(char, book);
+  memDayOverlay.classList.remove('open');
+  renderMemLib();
+});
+document.getElementById('memDayAdd').addEventListener('click', function() { openMemDayEdit(memCharById(memLibChar)); });
+document.getElementById('memPeriodAdd').addEventListener('click', function() { openMemDayEdit(memCharById(memLibChar), '', {}); });
+document.getElementById('memDayCancel').addEventListener('click', function() { memDayOverlay.classList.remove('open'); });
+document.getElementById('memDaysMore').addEventListener('click', function() { memDaysOffset += 30; renderMemLib(); });
+closeOnBackdrop(memDayOverlay);
 function confirmMemDelete(char, memory, after) {
   openConfirm('删除这条记忆？', function() {
     memStore[char.id] = memList(char.id).filter(function(m) { return m !== memory; });

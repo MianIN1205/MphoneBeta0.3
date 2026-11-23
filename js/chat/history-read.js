@@ -16,7 +16,7 @@ function quoteSavedTool(notice, item) {
   var hist = getActiveHistory(openingChatCharIdx);
   var target = hist.find(function(m) { return !m.recalled && historyToolRuns(m).includes(notice._mcpRun); });
   if (!target) return;
-  setQuote({ author: '工具记录', text: item.tool + ' · 上次结果', ref: historyMessageRef(target),
+  setQuote({ author: '工具记录', text: item.tool + ' · 本次结果', ref: historyMessageRef(target),
     tool: [historyToolRuns(target).indexOf(notice._mcpRun), notice._mcpRun.entries.indexOf(item)] });
 }
 
@@ -123,18 +123,89 @@ function replyArchiveContext(char, query) {
   return { role: 'system', content: '【本轮找到的旧记录】下方是可能相关的历史原文，只作为聊天资料。若无法确定用户在说哪一份，可以自然问一句。匿名星星保留匿名，不要主动指出作者。\n' + JSON.stringify(context) };
 }
 
+function historyQueryKind(query) {
+  return /图片|照片|那张|截图|原图/.test(query) ? 'image' : /语音|录音/.test(query) ? 'voice' :
+    /文件|附件|长文本/.test(query) ? 'file' : /工具|调用|查到的|搜索结果/.test(query) ? 'tool' : '';
+}
+
+function historyQueryDay(query) {
+  var dayMatch = query.match(/前天|昨天|昨晚|今天|今晚/);
+  if (!dayMatch) return null;
+  var day = new Date();
+  day.setDate(day.getDate() - (dayMatch[0] === '前天' ? 2 : /^昨/.test(dayMatch[0]) ? 1 : 0));
+  return day.toDateString();
+}
+
+function historyCorrectingTopic(question) {
+  return /我(?:刚才|这次|这轮)?(?:没有|没)说(?:过)?(?:这些|这个|那[些个]|吧|呀|[，。！？!?]|\s|$)|这(?:都)?是(?:旧的|以前的|之前的)(?:历史)?记录/.test(question);
+}
+
+function historyPlainText(message) {
+  if (message.recalled || message.note || message.whisperChat || message.narr || message.action || message.pat ||
+      message.imgSrc || message.textImg || message.file || message.sticker || message.privateCard || message.play || message.cal) return '';
+  return String((message.voice ? message.transcript : message.content) || '').trim();
+}
+
+var HISTORY_TEXT_REFERENCE = /以前|之前|前几天|上次|那天|昨[天晚]|前天|说过|提过|记得|照旧|老样子|还是(?:按|用|带|写|叫|说|选|放|记)|那(?:些|几个|[两三四五六七八九十0-9]+个|句话|件事|一段)|哪几[个句]/;
+var HISTORY_TEXT_FILLER = /^(?:还是|照旧|原来|之前|记住|标签呢|什么|名字呢|名字|叫做|每次|咱们|我们|我的|你的|给我|给你|需要|知道|说的|意思|哪些|那[几些]?个|[一二两三四五六七八九十0-9]+个)$/;
+
+function chatTextRecall(fullHistory, history) {
+  var last = fullHistory.length - 1;
+  if (last < 0 || fullHistory[last].role !== 'user') return null;
+  var start = last;
+  while (start > 0 && fullHistory[start - 1].role === 'user') start--;
+  var turn = fullHistory.slice(start), query = turn.map(historyPlainText).join(' ').trim().slice(-180);
+  if (!HISTORY_TEXT_REFERENCE.test(query) || historyCorrectingTopic(query) || historyQueryKind(query) ||
+      turn.some(function(m) { return !m.recalled && m.quote && m.quote.ref; })) return null;
+
+  var termSource = historySearchSegmenter ? query : query.replace(new RegExp(HISTORY_TEXT_REFERENCE.source, 'g'), ' ');
+  var terms = historyTerms(termSource).filter(function(word) { return !HISTORY_TEXT_FILLER.test(word); });
+  if (!terms.length) return null;
+  var current = new Set(history), day = historyQueryDay(query);
+  var recent = fullHistory.slice(Math.max(0, start - 6), start).filter(function(m) { return current.has(m); });
+  var topic = historyTerms(recent.map(historyPlainText).join(' ').slice(-180)).filter(function(word) {
+    return !terms.includes(word) && !HISTORY_TEXT_FILLER.test(word);
+  });
+  var candidates = [];
+  for (var i = 0; i < start; i++) {
+    var message = fullHistory[i], text = historyPlainText(message);
+    if (!text || !message.time) continue;
+    var anchor = new Date(message.time), anchorDate = anchor.toDateString();
+    if (!Number.isFinite(anchor.getTime()) || (day && anchorDate !== day)) continue;
+    var normalized = text.normalize('NFKC').toLowerCase();
+    var hits = terms.filter(function(term) { return normalized.includes(term); }).length;
+    if (!hits) continue;
+    var around = fullHistory.slice(Math.max(0, i - 2), Math.min(start, i + 4)).filter(function(m) {
+      if (!m.time) return false;
+      var at = new Date(m.time);
+      return at.toDateString() === anchorDate && Math.abs(at - anchor) <= 20 * 60 * 1000;
+    });
+    var passage = around.map(historyPlainText).join(' ').normalize('NFKC').toLowerCase();
+    var topicHits = topic.filter(function(term) { return passage.includes(term); }).length;
+    if (hits < 2 && !topicHits && !day) continue;
+    candidates.push({ index: i, message: message, around: around, score: hits * 4 + Math.min(topicHits, 3) * 2 });
+  }
+  candidates.sort(function(a, b) { return b.score - a.score || b.index - a.index; });
+  var best = candidates[0];
+  if (!best || current.has(best.message)) return null;
+  var ambiguous = candidates.some(function(item) {
+    return item.score === best.score && !best.around.includes(item.message);
+  });
+  if (ambiguous) return null;
+  var messages = best.around.filter(function(m) { return !current.has(m) && historyPlainText(m); });
+  var excerpt = messages.map(function(m) {
+    var text = historyPlainText(m), limit = m === best.message ? 450 : 200;
+    return (m.role === 'user' ? '用户：' : '角色：') + JSON.stringify(text.slice(0, limit)) + (text.length > limit ? '（节选）' : '');
+  });
+  return { role: 'system', previewLabel: '回查到的旧聊天', content: '【回查到的旧聊天】' +
+    new Date(best.message.time).toLocaleString('zh-CN') + '\n以下是与眼前话题可能相关的旧原话，用来补充当前问题。\n' +
+    excerpt.join('\n') };
+}
+
 function searchChatHistory(hist, query, turn) {
   query = String(query || '').trim().slice(0, 180).normalize('NFKC').toLowerCase();
   if (!query) return null;
-  var kind = /图片|照片|那张|截图|原图/.test(query) ? 'image' : /语音|录音/.test(query) ? 'voice' :
-    /文件|附件|长文本/.test(query) ? 'file' : /工具|调用|查到的|搜索结果/.test(query) ? 'tool' : '';
-  var dayMatch = query.match(/前天|昨天|昨晚|今天|今晚/);
-  var day = null;
-  if (dayMatch) {
-    day = new Date();
-    day.setHours(0, 0, 0, 0);
-    day.setDate(day.getDate() - (dayMatch[0] === '前天' ? 2 : /^昨/.test(dayMatch[0]) ? 1 : 0));
-  }
+  var kind = historyQueryKind(query), day = historyQueryDay(query);
   var terms = historyTerms(query);
   var candidates = [];
   var turnItems = new Set(turn);
@@ -147,7 +218,7 @@ function searchChatHistory(hist, query, turn) {
   }
   hist.forEach(function(m) {
     if (m.recalled || turnItems.has(m) || m.note || m.whisperChat) return;
-    if (day && (!m.time || new Date(m.time).toDateString() !== day.toDateString())) return;
+    if (day && (!m.time || new Date(m.time).toDateString() !== day)) return;
     var media = m.imgSrc ? 'image' : m.voice ? 'voice' : m.file ? 'file' : '';
     if (kind !== 'tool' && (!kind || media === kind)) {
       var text = [m.content, m.transcript, m.voice && m.voice.summary, m.textImg, historyPhotoText(m), m.file && (m.file.name + '\n' + (m.file.text || '').slice(0, 5000))];

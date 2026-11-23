@@ -117,6 +117,18 @@
   border-radius: 50%; background: #bd6987; box-shadow: 0 0 0 2px #fff3f7;
 }
 .mem-timeline-event:hover, .mem-timeline-event:focus-visible { color: #9a4766; background: #f8e7ee; }
+
+.mem-days { margin: 10px 0 16px; }
+.mem-days-head, .mem-day-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #795566; }
+.mem-days-head { margin: 0 1px 7px; font-size: 13px; }
+.mem-days-head .anniv-acts { margin: 0; }
+.mem-day-head { font-size: 12px; font-weight: 600; }
+.mem-day-text { margin-top: 6px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mem-day-period > summary, .mem-day-quotes > summary { cursor: pointer; font-size: 12px; color: #795566; }
+.mem-day-quotes, .mem-day-period { margin-top: 8px; }
+.mem-day-quotes blockquote { margin: 6px 0 0; padding: 5px 8px; border-radius: 7px; background: #f7edf1; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mem-day-period > .mem-card { margin: 8px 0 0; }
+#memDayOverlay .mem-edit-when input { grid-column: auto; }
 .mem-paste-modal { max-height: 86%; overflow: auto; }
 .mem-paste-item {
   display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px;
@@ -149,3 +161,4 @@
   border: 1px solid #eed0da; border-radius: 10px; background: #fff6fa;
   color: #865163; cursor: pointer; font: 600 12px system-ui, sans-serif;
 }
+.mem-more[hidden] { display: none; }

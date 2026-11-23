@@ -1,18 +1,11 @@
 // 眠花糖机 — 恢复主 API 配置、应用表单和刷新模型列表
-(function loadSavedConfig() {
-  var cfg = readAppliedApiConfig();
-  setDraftApiConfig(cfg);
-  var match = apiPresets.findIndex(function(preset) {
-    return preset && sameApiConfig(presetApiConfig(preset), cfg);
-  });
-  renderApiPresets(match);
-})();
+restoreAppliedApiDraft();
 
 document.getElementById('btnApply').addEventListener('click', function() {
   applyApiConfig(readDraftApiConfig());
 });
 
-function refreshApiModels(openPopup) {
+function refreshApiModels(openPopup, keepSelection) {
   if (refreshBtn.classList.contains('spinning')) return;
   var cfg = readDraftApiConfig();
   if (!cfg.url || !cfg.key) {
@@ -38,8 +31,9 @@ function refreshApiModels(openPopup) {
       });
       modelPopup.appendChild(item);
     });
-    // 保留已填的模型。接口未列出它时，仍可在列表里手动换一个。
-    setDraftApiModel(readDraftApiConfig().model || models[0]);
+    // 进入页面只预载选项，即使已应用的配置没选模型也保持原样。
+    var selected = readDraftApiConfig().model;
+    if (selected || !keepSelection) setDraftApiModel(selected || models[0]);
     if (openPopup && settingsScreen.classList.contains('active') && modelSelectBtn.getClientRects().length) setApiModelPopup(true);
     showToast('✓ 刷新成功', 'success');
   }).catch(function(err) {

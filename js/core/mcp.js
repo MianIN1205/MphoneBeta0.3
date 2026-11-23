@@ -213,6 +213,18 @@ function mcpActiveTools() {
   return list;
 }
 
+function mcpToolsForTurn(tools, question) {
+  var useFlomo = String(question || '').split(/[。！？!?\n]/).some(function(line) {
+    if (!/浮墨|flomo/i.test(line) || /为什么|怎么(?:又|老|总|没|不|会)|(?:别|不要|不用)[^，,]{0,12}(?:浮墨|flomo|调用|申请)/i.test(line)) return false;
+    if (/(?:浮墨|flomo)\s*(?:会不会|会|需要|要不要|能不能)(?:消耗|多花|扣|收费|花钱|花额度|付费)/i.test(line)) return false;
+    return /(?:用|打开|去)(?:一下)?(?:浮墨|flomo)|(?:写|存|记|保存|发|放)(?:一下|下来)?(?:到|进|在|入)(?:浮墨|flomo)|(?:查|找|搜|读|翻|看|更新|删除)(?:一下|看)?(?:在|到)?(?:浮墨|flomo)|(?:浮墨|flomo)(?:里|里面|中)?(?:帮我|给我|能不能)?(?:查|搜|找|读|翻|看看|写|存|记录|更新|删除)|(?:浮墨|flomo)(?:里|里面|中)[^，,]{0,20}(?:哪[条篇]|是什么|写了什么|有没有)/i.test(line);
+  });
+  return useFlomo ? tools : tools.filter(function(tool) {
+    var hit = mcpToolMap[tool.name];
+    return !(hit && hit.server && hit.server.flomo);
+  });
+}
+
 // 模型要用工具时：先按设置问一下，再调用
 var mcpAskOverlay = document.getElementById('mcpAskOverlay');
 var mcpAskResolve = null;

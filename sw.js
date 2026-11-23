@@ -3,7 +3,7 @@
 // 只处理本站文件，AI / 语音 / 生图等外部接口请求完全不经过这里。
 
 // 文件拆分后 css/、js/ 也要预先缓存；改动这个列表时把版本号加一
-const V = '151';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
+const V = '152';   // 和 index.html、js/core/boot.js 里的版本号一样，用 tools/bump-version.py 一起改
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = SCOPE.pathname === '/' ? 'mphone-v' : 'mphone:' + SCOPE.pathname + ':v';
 const CACHE = CACHE_PREFIX + V;
@@ -20,7 +20,7 @@ const JS = ['core/store', 'core/boot', 'core/utils', 'core/backup-format', 'desk
             'chat/room-view', 'char/settings', 'chat/contacts', 'chat/new-chat', 'char/settings-save',
             'chat/list', 'chat/room', 'char/look', 'prompt/tabs', 'prompt/worldbook',
             'prompt/cot', 'prompt/style-lib', 'prompt/presets', 'prompt/scene', 'core/image-picker', 'desk/appearance-store',
-            'settings/data', 'settings/api-restore', 'chat/history', 'chat/prompt', 'chat/render',
+            'settings/data', 'settings/api-restore', 'chat/history', 'chat/history-read', 'chat/prompt', 'chat/render',
             'chat/reply', 'chat/input', 'chat/voice', 'chat/room-lists', 'chat/private-plus', 'chat/mine',
             'chat/feed', 'char/auto', 'char/summary', 'char/backup', 'char/import',
             'desk/memory-open', 'desk/memory-hub', 'settings/media-api', 'chat/wallet-fav', 'chat/msg-menu', 'chat/media-send', 'chat/file-send', 'chat/compose-plus', 'chat/img-use', 'char/look-share', 'desk/desk-icons', 'chat/msg-shot', 'char/css-preview', 'chat/peek',
@@ -28,7 +28,7 @@ const JS = ['core/store', 'core/boot', 'core/utils', 'core/backup-format', 'desk
             'desk/gallery', 'desk/anniv', 'desk/diary', 'desk/widgets', 'char/memory',
             'desk/memory-lib', 'desk/memory-import', 'chat/quick-bar', 'chat/status-panel', 'chat/stickers', 'chat/msg-ops',
             'settings/backup', 'chat/calendar', 'core/errors', 'char/archive', 'chat/opening', 'desk/places', 'desk/pet', 'chat/assets', 'chat/group', 'chat/group-play', 'settings/whatsnew', 'prompt/wb-builtin', 'desk/blindbox', 'desk/letters', 'desk/greenhouse', 'desk/starjar', 'desk/books', 'chat/moments', 'char/life', 'char/migrate', 'prompt/wb-import', 'settings/transfer']
-  .concat('desk/pair-notes', 'desk/tarot').map(function (n) { return './js/' + n + '.js?v=' + V; });
+  .concat('desk/pair-notes', 'desk/tarot', 'char/memory-days').map(function (n) { return './js/' + n + '.js?v=' + V; });
 const CORE = ['./', './index.html', './manifest.webmanifest',
               './icons/icon.png', './icons/logo.png', './icons/badge.png', './icons/mianin.jpg',
               './icons/stickers/little-heart.png', './icons/stickers/happy-face.png']

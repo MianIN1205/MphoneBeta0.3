@@ -582,7 +582,7 @@ function generateCharPost(idx) {
     '想配图的话，在正文后面用 <文字图>画面描述</文字图> 附上 1～3 张「文字图」（用一两句话描述照片里的画面，比如：窗外的晚霞，橘粉色的云）；不配图也可以。'
   )]);
   return callApiOnce(msgs, char).then(function(text) {
-    text = memExtractTags(char, text).replace(actionRe(), '').replace(/#[^#\s]{1,20}#?/g, '').replace(/[ \t]{2,}/g, ' ');   // TA 顺手记下的记忆；动作描写、# 话题标签去掉
+    text = memExtractTags(char, text, 'feed').replace(actionRe(), '').replace(/#[^#\s]{1,20}#?/g, '').replace(/[ \t]{2,}/g, ' ');   // TA 顺手记下的记忆；动作描写、# 话题标签去掉
     var textImgs = [];
     text = text.replace(/<文字图>([\s\S]*?)<\/文字图>/g, function(_, t) { if (t.trim()) textImgs.push(t.trim()); return ''; });
     feedPosts.unshift({
@@ -776,7 +776,7 @@ function charInteract(post, idx) {
     '只输出 JSON：{"like": true 或 false, "comment": "角色的评论", "npcReplies": [{"name": "评论者的名字", "text": "回复"}]}。不想评论时 comment 为空，不需要 NPC 回复时 npcReplies 为空。'
   )]);
   return callApiOnce(msgs, char).then(function(text) {
-    var r = parseInteraction(memExtractTags(char, text));
+    var r = parseInteraction(memExtractTags(char, text, 'feed'));
     r.comment = r.comment.replace(actionRe(), '').replace(/[ \t]{2,}/g, ' ').trim();
     if (r.like && !isOwn && !post.likes.some(function(a) { return sameAuthor(a, me); })) post.likes.push(me);
     if (r.comment) {

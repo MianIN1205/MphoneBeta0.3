@@ -442,16 +442,12 @@ function buildMsgs(idx, histOverride, historySession, preview) {
   var isDrama = history === getDramaHistory(idx);
 
   // 记录裁剪：聊天和剧情都按「最大记忆范围」（回合）和「上下文上限」（token）只带最近的部分；
-  // 聊天另外带全部总结，剧情省略掉的回合用各回合的前情代替；再提醒 AI 重点关注注意力范围内的回合
+  // 聊天带未重复的总结，剧情省略的回合带前情；再提醒 AI 重点关注注意力范围内的回合。
   var attentionNote = null;
+  var recalledText = null;
   var richFrom = Math.max(0, history.length - 20);   // 其他记录：最近 20 条附带真实媒体
   var isChatHist = history === getChatHistory(idx);
   if (isChatHist || isDrama) {
-    var mem = char.memory || {};
-    if (isChatHist && mem.summaries && mem.summaries.length) {
-      msgs.push({ role: 'system', content: '【记忆总结】以下是你们之前的聊天经过：\n' +
-        mem.summaries.map(function(s) { return s.text; }).join('\n') });
-    }
     var cc = Object.assign({}, DEFAULT_CHAT_CFG, char.chatCfg || {});
     var allRounds = splitRounds(history);
     var rounds = allRounds.slice(-cc.maxMem);
@@ -462,6 +458,10 @@ function buildMsgs(idx, histOverride, historySession, preview) {
         rounds[0].forEach(function(m) { total -= msgTokens(m); });
         rounds.shift();
       }
+    }
+    if (isChatHist) {
+      var summaries = chatSummariesForPrompt(char, allRounds, allRounds.length - rounds.length);
+      if (summaries.length) msgs.push({ role: 'system', content: '【记忆总结】以下是你们之前的聊天经过：\n' + summaries.join('\n') });
     }
     if (isDrama && rounds.length < allRounds.length) {
       // 存过档的（char.dramaSaves，js/chat/compose-plus.js）：省略掉的这部分先一个个列存档，存档没盖到的回合再接每轮的前情
@@ -474,6 +474,10 @@ function buildMsgs(idx, histOverride, historySession, preview) {
       }
     }
     history = [].concat.apply([], rounds);
+    if (isChatHist && rounds.length < allRounds.length && (preview || historySession)) {
+      recalledText = chatTextRecall(fullHistory, history);
+      if (recalledText) msgs.push(recalledText);
+    }
     // 注意力范围内的消息附带真实图片 / 语音，更早的只用文字说明（省流量和费用）
     richFrom = [].concat.apply([], rounds.slice(0, Math.max(0, rounds.length - cc.attention))).length;
     if (rounds.length > cc.attention) {
@@ -485,6 +489,13 @@ function buildMsgs(idx, histOverride, historySession, preview) {
   // 记忆库：珍贵的回忆 + 和最近对话相关的记忆 + 怎样记下新记忆（权限在角色设置「扩展」页）
   var memSys = (typeof memoryContextFor === 'function') ? memoryContextFor(char, history) : '';
   if (memSys) msgs.push({ role: 'system', content: memSys });
+  if (isChatHist && (preview || historySession)) {
+    var memoryConfig = memCfgOf(char);
+    var dailyRecall = memoryConfig.on && memoryConfig.read && !recalledText ? memDayRecall(char, fullHistory, history) : '';
+    var dailyRule = memDayRule(char, fullHistory);
+    if (dailyRecall) msgs.push({ role: 'system', content: dailyRecall });
+    if (dailyRule) msgs.push({ role: 'system', content: dailyRule });
+  }
 
   // 世界书依条目的位置排在聊天记录前、后，或按深度插入。
   // 同一个位置的合成一段「背景设定」，并说清楚这是心里知道的背景：不复述、不反复提、不说「设定」「世界书」
@@ -530,6 +541,19 @@ function buildMsgs(idx, histOverride, historySession, preview) {
     if (preview && !m.recalled) entry.previewMedia = promptPreviewMedia(m);
     return entry;
   }).reverse();
+  if (isChatHist) {
+    var previousDay = '';
+    history.forEach(function(message, i) {
+      if (!message.time) return;
+      var date = new Date(message.time);
+      if (!Number.isFinite(date.getTime())) return;
+      var day = date.toLocaleDateString('zh-CN');
+      if (day === previousDay) return;
+      previousDay = day;
+      var marker = '【以下是 ' + day + ' 的聊天记录】', original = rawHist[i].content;
+      rawHist[i].content = Array.isArray(original) ? [{ type: 'text', text: marker }].concat(original) : marker + '\n' + original;
+    });
+  }
   // 聊天和剧情的记忆互通：带上另一边的前情（剧情窗口还带聊天的记忆总结），再说明现在在哪个空间
   var cross = crossSceneContext(idx, isDrama);
   if (cross) msgs.push({ role: 'system', content: cross });

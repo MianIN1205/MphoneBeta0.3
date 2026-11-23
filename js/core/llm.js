@@ -317,10 +317,15 @@ function llmToolChat(msgs, opts) {
               .then(function(r) { results.push({ call: c, text: String(r == null ? '' : r) }); });
           });
         }, Promise.resolve()).then(function() {
+          function withReplyFocus(result, index) {
+            var text = result.text || '（无内容）';
+            return opts.toolReplyContext && index === results.length - 1
+              ? text + '\n\n【小手机补充 · 本轮回复目标】\n' + opts.toolReplyContext : text;
+          }
           if (provider === 'anthropic') {
-            body.messages.push({ role: 'user', content: results.map(function(r) { return { type: 'tool_result', tool_use_id: r.call.id, content: r.text || '（无内容）' }; }) });
+            body.messages.push({ role: 'user', content: results.map(function(r, i) { return { type: 'tool_result', tool_use_id: r.call.id, content: withReplyFocus(r, i) }; }) });
           } else {
-            results.forEach(function(r) { body.messages.push({ role: 'tool', tool_call_id: r.call.id, content: r.text || '（无内容）' }); });
+            results.forEach(function(r, i) { body.messages.push({ role: 'tool', tool_call_id: r.call.id, content: withReplyFocus(r, i) }); });
           }
           return send();
         });

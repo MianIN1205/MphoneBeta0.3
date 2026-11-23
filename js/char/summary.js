@@ -30,19 +30,30 @@ function summarizeRounds(idx, from, to) {
   var char = charList[idx];
   var rounds = splitRounds(getChatHistory(idx)).slice(from, to);
   if (!rounds.length) return Promise.resolve(null);
+  var source = roundsAsText(rounds, char);
   var msgs = [
     { role: 'system', content: '你是记忆整理助手。请把下面这段聊天总结成简洁的记忆要点：用第三人称，保留关键事件、约定、情绪与关系变化、重要细节，不超过 200 字。只输出总结内容。' },
-    { role: 'user', content: roundsAsText(rounds, char) }
+    { role: 'user', content: source }
   ];
   return callApiOnce(msgs, char).then(function(text) {
     var mem = getCharMemory(char);
-    var item = { id: genFeedId('m'), text: text.trim(), from: from, to: to, time: Date.now() };
+    var item = { id: genFeedId('m'), text: text.trim(), from: from, to: to, time: Date.now(), sourceHash: hubHash(source) };
     mem.summaries.push(item);
     mem.upTo = Math.max(mem.upTo || 0, to);
     saveCharList();
     if (appCharSetting.classList.contains('active') && charList[editingCharIndex] === char) renderMemSummaries(char);
     return item;
   });
+}
+
+function chatSummariesForPrompt(char, rounds, firstIncluded) {
+  var summaries = (char.memory && char.memory.summaries) || [];
+  return summaries.filter(function(summary) {
+    // 老总结没有原文校验，手动编辑过的总结也可能有补充。这两类继续带上。
+    if (!summary.sourceHash || !Number.isInteger(summary.from) || !Number.isInteger(summary.to) ||
+        summary.from < firstIncluded || summary.to > rounds.length || summary.from >= summary.to) return true;
+    return summary.sourceHash !== hubHash(roundsAsText(rounds.slice(summary.from, summary.to), char));
+  }).map(function(summary) { return summary.text; }).filter(Boolean);
 }
 
 // 回复后检查：超出注意力范围且未总结的回合累计到设定值就自动总结
@@ -93,7 +104,13 @@ function renderMemSummaries(char) {
     var ta = document.createElement('textarea');
     ta.className = 'mem-sum-text';
     ta.value = s.text;
-    ta.addEventListener('change', function() { s.text = this.value.trim(); saveCharList(); });
+    ta.addEventListener('change', function() {
+      var text = this.value.trim();
+      if (text === s.text) return;
+      s.text = text;
+      delete s.sourceHash;
+      saveCharList();
+    });
     item.appendChild(head);
     item.appendChild(ta);
     list.appendChild(item);

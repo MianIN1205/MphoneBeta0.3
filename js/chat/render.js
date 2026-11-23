@@ -363,7 +363,7 @@ function renderMcpNotice(run, notice) {
       var use = document.createElement('button');
       use.type = 'button';
       use.className = 'cr-mcp-reread';
-      use.textContent = '读上次结果';
+      use.textContent = '附带本次结果';
       use.addEventListener('click', function() { quoteSavedTool(notice, item); });
       entry.appendChild(use);
     }

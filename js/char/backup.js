@@ -23,7 +23,7 @@ document.getElementById('memExportBtn').addEventListener('click', function() {
     chat: chatHistories[id] || [], drama: dramaHistories[id] || [],
     mems: memStore[id] || [], milestone: memMilestones[id] || null,
     archives: arcStore[id] || [],
-    know: memKnow[id] || null, fading: memFading[id] || []
+    know: memKnow[id] || null, fading: memFading[id] || [], daily: memDayBook(char)
   }, backupFileName('json', char.charAlias || char.charName || '未命名'));
   showToast('✓ 已导出', 'success');
 });
@@ -35,6 +35,7 @@ document.getElementById('memRestoreBtn').addEventListener('click', function() {
     readBackupText(file).then(function(t) {
       var b = JSON.parse(t);
       if (!b || b.app !== 'mphone' || b.type !== 'char' || !backupRecord(b.char) ||
+          (b.daily != null && (!backupRecord(b.daily) || !backupRecord(b.daily.days) || !Array.isArray(b.daily.periods))) ||
           (b.know != null && !backupRecord(b.know)) || (b.milestone != null && !backupRecord(b.milestone)) ||
           ['chat', 'drama', 'mems', 'archives', 'fading'].some(function(key) {
             return b[key] != null && (!Array.isArray(b[key]) || !b[key].every(backupRecord));
@@ -60,6 +61,7 @@ document.getElementById('memRestoreBtn').addEventListener('click', function() {
           mphoneStore.save('mphone_mem_fading', memFading);
         }
         if (Array.isArray(b.archives) && typeof arcStore !== 'undefined') { arcStore[cur.id] = b.archives; saveArcStore(); }
+        if (b.daily) saveMemDays(cur, b.daily);
         saveCharList();
         saveHistories();
         fillCharForm(restored);
