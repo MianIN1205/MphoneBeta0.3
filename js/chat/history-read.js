@@ -183,7 +183,7 @@ function withChatHistoryReads(msgs, records, cfg, session, query) {
     })) {
       source = [source[0], { type: 'text', text: '这条记录的原媒体已附在本次消息历史中。' }];
     } else if (!record.tool) {
-      source = historyPhotoPrompt(source, record.message, session);
+      source = historyVoicePrompt(historyPhotoPrompt(source, record.message, session), record.message, session);
     }
     parts.push.apply(parts, source);
   });
@@ -198,6 +198,40 @@ function historyPhotoText(message) {
   return (message.photoNotes || []).map(function(note, index) {
     return note ? '第 ' + (index + 1) + ' 张' + (note.labeled ? '：' : '（旧版模型描述）：') + note.scene + (note.detail ? '；留意：' + note.detail : '') : '';
   }).filter(Boolean).join('\n');
+}
+
+function historyVoicePrompt(parts, message, session) {
+  if (!session || !Array.isArray(parts) || !message.voice || message.role !== 'user') return parts;
+  if (['manual', 'model', 'stt'].includes(message.voice.transcriptStatus)) return parts;
+  var audio = parts.find(function(part) { return part.type === 'input_audio'; });
+  if (!audio) return parts;
+  var note = session.voices.find(function(item) { return item.message === message; });
+  if (!note) {
+    if (session.voices.length >= 3) return parts;
+    note = { id: 'v' + (session.voices.length + 1), message: message, src: audio._voiceSrc };
+    session.voices.push(note);
+  }
+  audio._voiceNoteId = note.id;
+  return parts;
+}
+
+function saveHistoryVoiceNotes(text, session, hist) {
+  return String(text || '').replace(/<语音记录>([\s\S]*?)(<\/语音记录>|$)/g, function(_, raw, closed) {
+    if (!closed) return '';
+    var data;
+    try { data = JSON.parse(raw); } catch (_) { return ''; }
+    session.voices.forEach(function(note) {
+      var m = note.message, value = data && data[note.id];
+      if (!session.sentVoices.has(note.id) || !hist.includes(m) || m.recalled || m.voice.src !== note.src ||
+          ['manual', 'model', 'stt'].includes(m.voice.transcriptStatus) || typeof value !== 'string') return;
+      value = value.trim().slice(0, 6000);
+      if (!value || /^[(（「【\s]*(?:听不清|未识别内容|无法识别)[)）」】\s。]*$/.test(value)) return;
+      m.transcript = value;
+      m.voice.transcriptStatus = 'model';
+      if (typeof refreshVoiceTranscript === 'function') refreshVoiceTranscript(m);
+    });
+    return '';
+  });
 }
 
 function historyPhotoPrompt(parts, message, session, inHistory) {

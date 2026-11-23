@@ -264,6 +264,12 @@
 .voice-transcript:empty::before { content: attr(data-placeholder); color: #78656e; }
 .voice-transcript-wrap.incoming { align-items: flex-start; }
 .voice-transcript-status { font-size: 11px; color: #777; padding: 3px 4px 0; }
+.voice-transcript-retry { border: 0; background: none; color: #92586c; padding: 4px 0 0; font: inherit; font-size: 11px; cursor: pointer; }
+.voice-review-play { border: 1px solid #edd4de; border-radius: 12px; background: #fcf0f4; color: #865367; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; align-self: start; }
+.voice-review-hint { color: #806976; font-size: 12px; line-height: 1.5; margin: 8px 0 6px; }
+.voice-review-text { box-sizing: border-box; width: 100%; max-height: 34vh; resize: none; padding: 9px 11px; border: 1px solid #ead3dd; border-radius: 11px; background: #fffafd; color: #59434f; font: inherit; font-size: 14px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+.voice-review .mine-acc-actions { margin-top: 10px; }
+.voice-review button:disabled { opacity: .48; cursor: default; }
 .voice-transcript-editor {
   width: min(170px, 44vw); max-width: 100%; max-height: 236px; min-width: 0;
   padding: 0; border: 0; outline: none; resize: none;
@@ -304,10 +310,10 @@
 }
 .voice-cancel svg { width: 15px; height: 15px; }
 .voice-pop.recording .voice-cancel { visibility: visible; }
-.voice-cancel.armed { background: #e05a64; color: #fff; transform: scale(1.12); }
+.voice-cancel.armed { background: #e05a64; color: #fff; box-shadow: 0 0 0 3px #e05a6436; }
 /* 右边「文」：滑过去松手 = 转成文字发出去（用户要的） */
 .voice-to-text { font-size: 14px; font-weight: 600; background: rgba(120,140,220,0.14); color: #6a7fd0; }
-.voice-to-text.armed { background: #6a7fd0; color: #fff; }
+.voice-to-text.armed { background: #6a7fd0; color: #fff; box-shadow: 0 0 0 3px #6a7fd036; }
 .voice-cap { font-size: 10.5px; color: #b5a2aa; text-align: center; line-height: 1.4; }
 .voice-cap:empty { display: none; }
 .voice-rec-btn {

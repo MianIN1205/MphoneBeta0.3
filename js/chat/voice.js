@@ -195,8 +195,6 @@ function createVoiceBubble(m, list, empty) {
   transcriptWrap.inert = true;
   var transcriptStatus = document.createElement('div');
   transcriptStatus.className = 'voice-transcript-status';
-  transcriptStatus.textContent = '部分转写';
-  transcriptStatus.hidden = m.voice.transcriptStatus !== 'partial';
   transcriptWrap.append(createVoiceTranscript(m, transcriptStatus), transcriptStatus);
 
   // 解码绘制静态波形（结果缓存供停止播放后重绘）
@@ -290,8 +288,16 @@ function createVoiceTranscript(message, status) {
   button.className = 'voice-transcript-edit';
   var pencil = DRAMA_HEAD_ICONS.edit;
   var check = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+  var retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'voice-transcript-status voice-transcript-retry';
+  retry.textContent = '用原音重新转写';
   function paint() {
     label.textContent = message.transcript || '';
+    var kind = message.voice.transcriptStatus;
+    status.textContent = { partial: '部分转写', model: '角色听写', stt: '识别接口转写' }[kind] || '';
+    status.hidden = !status.textContent;
+    retry.hidden = !message.voice.src || !input.hidden || kind === 'manual';
     label.hidden = !input.hidden;
     button.innerHTML = input.hidden ? pencil : check;
     button.setAttribute('aria-label', input.hidden ? '编辑语音转写' : '保存语音转写');
@@ -305,7 +311,6 @@ function createVoiceTranscript(message, status) {
       else delete message.voice.transcriptStatus;
       delete message.voice.summary;
       delete message.voice.summaryEdited;
-      status.hidden = true;
       saveHistories();
     }
     input.hidden = true;
@@ -327,9 +332,39 @@ function createVoiceTranscript(message, status) {
     done(save);
     button.focus();
   });
-  card.append(label, input, button);
+  retry.addEventListener('click', async function() {
+    if (!sttReady()) { showToast('先配置语音识别接口', 'plain'); return; }
+    var src = message.voice.src, original = message.transcript, originalStatus = message.voice.transcriptStatus;
+    retry.disabled = true;
+    retry.textContent = '正在转写…';
+    try {
+      var text = await sttTranscribeWhisper(src);
+      if (!message.recalled && message.voice.src === src && message.transcript === original && message.voice.transcriptStatus === originalStatus && input.hidden) {
+        message.transcript = text;
+        message.voice.transcriptStatus = 'stt';
+        saveHistories();
+        refreshVoiceTranscript(message);
+      }
+    } catch (err) {
+      showToast('重新转写失败 · ' + explainError(err).title, 'error');
+    } finally {
+      retry.disabled = false;
+      retry.textContent = '用原音重新转写';
+    }
+  });
+  card._refreshVoiceTranscript = paint;
+  card.append(label, input, button, retry);
   paint();
   return card;
+}
+function refreshVoiceTranscript(message) {
+  document.querySelectorAll('.chat-msg-row').forEach(function(row) {
+    if (row._msg !== message) return;
+    (row._extras || []).forEach(function(extra) {
+      var card = extra.querySelector('.voice-transcript-card');
+      if (card && card._refreshVoiceTranscript) card._refreshVoiceTranscript();
+    });
+  });
 }
 
 // =============================================
@@ -419,7 +454,7 @@ function startLiveStt() {
   if (!liveSttOn()) return;
   try {
     var sr = new VoiceSR();
-    var capture = { recognizer: sr, finalText: '', interimText: '', interrupted: false, finishing: false };
+    var capture = { recognizer: sr, savedText: '', finalText: '', interimText: '', interrupted: false, finishing: false, restarts: 0, running: true };
     sr.lang = (navigator.language && /^zh/i.test(navigator.language)) ? navigator.language : 'zh-CN';
     sr.continuous = true;
     sr.interimResults = true;
@@ -431,9 +466,25 @@ function startLiveStt() {
       }
       capture.finalText = fin; capture.interimText = mid;
     };
-    sr.onerror = function() { capture.interrupted = true; };
+    sr.onerror = function(ev) {
+      capture.interrupted = true;
+      capture.fatal = ev.error !== 'no-speech';
+    };
     capture.done = new Promise(function(resolve) {
+      capture.resolve = resolve;
       sr.onend = function() {
+        capture.running = false;
+        if (!capture.finishing && _liveSR === capture && !capture.fatal && capture.restarts < 8) {
+          capture.interrupted = true;
+          capture.restarts++;
+          capture.savedText += ' ' + capture.finalText + capture.interimText;
+          capture.finalText = capture.interimText = '';
+          capture.restart = setTimeout(function() {
+            if (_liveSR !== capture || capture.finishing) return;
+            try { sr.start(); capture.running = true; } catch (_) { resolve(); }
+          }, 160);
+          return;
+        }
         if (!capture.finishing) capture.interrupted = true;
         resolve();
       };
@@ -447,7 +498,9 @@ function stopLiveStt() {
   _liveSR = null;
   if (!capture) return Promise.resolve({ text: '' });
   capture.finishing = true;
-  try { capture.recognizer.stop(); } catch (_) {}
+  clearTimeout(capture.restart);
+  if (capture.running) { try { capture.recognizer.stop(); } catch (_) { capture.resolve(); } }
+  else capture.resolve();
   var timer;
   var deadline = new Promise(function(resolve) { timer = setTimeout(function() { resolve(true); }, 2000); });
   return Promise.race([capture.done, deadline]).then(function(timedOut) {
@@ -455,14 +508,18 @@ function stopLiveStt() {
     if (timedOut) {
       try { capture.recognizer.abort(); } catch (_) {}
     }
-    var text = (capture.finalText + capture.interimText).replace(/\s+/g, ' ').trim();
+    var text = (capture.savedText + ' ' + capture.finalText + capture.interimText).replace(/\s+/g, ' ').trim();
     return { text: text, partial: !!(capture.interimText || capture.interrupted || timedOut) };
   });
 }
 function abortLiveStt() {
   var capture = _liveSR;
   _liveSR = null;
-  if (capture) { try { capture.recognizer.abort(); } catch (_) {} }
+  if (capture) {
+    clearTimeout(capture.restart);
+    capture.finishing = true;
+    try { capture.recognizer.abort(); } catch (_) {}
+  }
 }
 
 // 按住 🎙：开始录音
@@ -499,24 +556,101 @@ voiceRecBtn.addEventListener('pointerdown', function(e) {
   }, VOICE_HOLD_MS);
 });
 // 录音时手指在 ✕ 上（取消）还是「文」上（转成文字发）
-var VOICE_HINT = '松手发送，左滑取消，右滑转文字';
+var VOICE_HINT = '松手发送，左滑取消，右滑确认听写';
+function voiceSlideZone(e) {
+  if (!_micHolding || !_mediaRecorder || _mediaRecorder.state !== 'recording') return '';
+  function over(el, padding) {
+    var r = el.getBoundingClientRect();
+    return e.clientX >= r.left - padding && e.clientX <= r.right + padding &&
+      e.clientY >= r.top - padding && e.clientY <= r.bottom + padding;
+  }
+  return over(voiceCancel, -2) ? 'cancel' : over(voiceToText, 6) ? 'text' : '';
+}
 voiceRecBtn.addEventListener('pointermove', function(e) {
-  if (!_micHolding) return;
-  var over = function(el) { var r = el.getBoundingClientRect(), pad = 12; return e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad; };
-  var z = over(voiceCancel) ? 'cancel' : over(voiceToText) ? 'text' : '';
+  var z = voiceSlideZone(e);
   if (z === _voiceZone) return;
   _voiceZone = z;
   voiceCancel.classList.toggle('armed', z === 'cancel');
   voiceToText.classList.toggle('armed', z === 'text');
-  voiceHintText(z === 'cancel' ? '松手取消' : z === 'text' ? '松手转成文字发出去' : VOICE_HINT);
-  if (z && navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} }
+  voiceHintText(z === 'cancel' ? '松手取消' : z === 'text' ? '松手后确认听写' : VOICE_HINT);
+  if (z && navigator.vibrate) {
+    try { navigator.vibrate(z === 'cancel' ? [14, 30, 12] : 14); } catch (_) {}
+  }
 });
-voiceRecBtn.addEventListener('pointerup', function() { voiceRecBtn.classList.remove('pressing'); finishRecording(_voiceZone !== 'cancel', _voiceZone === 'text'); });
+voiceRecBtn.addEventListener('pointerup', function(e) {
+  var zone = voiceSlideZone(e);
+  voiceRecBtn.classList.remove('pressing');
+  finishRecording(zone !== 'cancel', zone === 'text');
+});
 voiceRecBtn.addEventListener('pointercancel', function() { voiceRecBtn.classList.remove('pressing'); finishRecording(false); });
 voiceRecBtn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
-// 结束录音：send = true 发出去，false 丢掉；asText = 转成文字、当普通消息发（转不出来就还是发语音）
-function finishRecording(send, asText) {
+var voiceReviewOverlay = document.getElementById('voiceReviewOverlay');
+var voiceReviewText = document.getElementById('voiceReviewText');
+var voiceReviewSend = document.getElementById('voiceReviewSend');
+var voiceReviewPlay = document.getElementById('voiceReviewPlay');
+var voiceReviewDraft = null;
+var voiceReviewAudio = new Audio();
+
+function saveRecordedVoice(hist, message) {
+  var at = hist.findIndex(function(item) { return item.time > message.time; });
+  if (at < 0) hist.push(message);
+  else hist.splice(at, 0, message);
+  saveHistories();
+  if (appChatRoom.classList.contains('active') && openingChatCharIdx >= 0 && hist === getActiveHistory(openingChatCharIdx)) {
+    if (at < 0) renderHistMsg(message, document.getElementById('chatMsgList'), document.getElementById('chatRoomEmpty'));
+    else renderRoomLists(openingChatCharIdx);
+  }
+}
+function closeVoiceReview() {
+  voiceReviewAudio.pause();
+  voiceReviewAudio.removeAttribute('src');
+  voiceReviewPlay.textContent = '播放原音';
+  voiceReviewDraft = null;
+  voiceReviewText.value = '';
+  voiceReviewOverlay.classList.remove('open');
+}
+function openVoiceReview(hist, char, message) {
+  voiceReviewDraft = { hist: hist, charId: char.id, message: message };
+  voiceReviewAudio.src = message.voice.src;
+  voiceReviewText.value = message.transcript || '';
+  document.getElementById('voiceReviewHint').textContent = message.transcript
+    ? (message.voice.transcriptStatus === 'partial' ? '只识别出一部分。补好后，原音会一起发出。' : '检查一下听写。确认后，原音会一起发出。')
+    : '还没有转出文字。你可以填写原话，或用键盘语音听写。';
+  voiceReviewSend.disabled = !voiceReviewText.value.trim();
+  voiceReviewOverlay.classList.add('open');
+}
+voiceReviewText.addEventListener('input', function() { voiceReviewSend.disabled = !this.value.trim(); });
+voiceReviewPlay.addEventListener('click', function() {
+  if (!voiceReviewAudio.paused) voiceReviewAudio.pause();
+  else voiceReviewAudio.play().catch(function() { showToast('原音没能播放', 'plain'); });
+});
+voiceReviewAudio.addEventListener('play', function() { voiceReviewPlay.textContent = '暂停原音'; });
+['pause', 'ended'].forEach(function(event) {
+  voiceReviewAudio.addEventListener(event, function() { voiceReviewPlay.textContent = '播放原音'; });
+});
+document.getElementById('voiceReviewCancel').addEventListener('click', closeVoiceReview);
+closeOnBackdrop(voiceReviewOverlay, closeVoiceReview);
+document.getElementById('voiceReviewForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var text = voiceReviewText.value.trim(), draft = voiceReviewDraft;
+  if (!draft || !text) return;
+  var idx = findCharIdx(draft.charId), message = draft.message;
+  if (idx < 0 || getChatHistory(idx) !== draft.hist) {
+    closeVoiceReview();
+    showToast('原来的聊天已不可用', 'plain');
+    return;
+  }
+  if (openingChatCharIdx === idx && message.quote && pendingQuote === message.quote) clearQuote();
+  message.time = Date.now();
+  message.transcript = text;
+  message.voice.transcriptStatus = 'manual';
+  closeVoiceReview();
+  saveRecordedVoice(draft.hist, message);
+});
+
+// 普通语音松手就发。右滑时保留录音，等用户确认配套的文字。
+function finishRecording(send, review) {
   clearTimeout(_micTimer);
   stopRecOverlay();
   if (!_micHolding || !_mediaRecorder || _mediaRecorder.state === 'inactive') {
@@ -535,9 +669,10 @@ function finishRecording(send, asText) {
     else if (duration < 0.6) showToast('录音时间太短', 'error');
     return;
   }
-  var time = Date.now(), quote = pendingQuote;
+  var time = Date.now(), quote = pendingQuote, char = charList[openingChatCharIdx];
   var hist = getChatHistory(openingChatCharIdx);
-  if (quote) clearQuote();
+  if (quote && !review) clearQuote();
+  if (review) closeVoicePop();
   var recognition = stopLiveStt();
   var audio = new Promise(function(resolve, reject) {
     recorder.onstop = function() {
@@ -550,26 +685,14 @@ function finishRecording(send, asText) {
     recorder.stop();
   });
   var ready = Promise.all([pendingVoiceMessages.get(hist), audio, recognition]).then(function([, src, transcript]) {
-    var m = { role: 'user', content: '[语音消息]', time: time };
+    var m = { role: 'user', content: '[语音消息]', time: time, voice: { src: src, dur: Math.round(duration * 10) / 10 } };
     if (quote) m.quote = quote;
-    if (asText && transcript.text) {
-      m.content = transcript.text;
-    } else {
-      if (asText) showToast('没转出文字，先发成语音了', 'plain');
-      m.voice = { src: src, dur: Math.round(duration * 10) / 10 };
-      if (transcript.text) {
-        m.transcript = transcript.text;
-        if (transcript.partial) m.voice.transcriptStatus = 'partial';
-      }
+    if (transcript.text) {
+      m.transcript = transcript.text;
+      if (transcript.partial) m.voice.transcriptStatus = 'partial';
     }
-    var at = hist.findIndex(function(item) { return item.time > time; });
-    if (at < 0) hist.push(m);
-    else hist.splice(at, 0, m);
-    saveHistories();
-    if (appChatRoom.classList.contains('active') && openingChatCharIdx >= 0 && hist === getActiveHistory(openingChatCharIdx)) {
-      if (at < 0) renderHistMsg(m, document.getElementById('chatMsgList'), document.getElementById('chatRoomEmpty'));
-      else renderRoomLists(openingChatCharIdx);
-    }
+    if (review) openVoiceReview(hist, char, m);
+    else saveRecordedVoice(hist, m);
   }).catch(function(err) {
     console.warn('[Mphone] 保存语音失败:', err);
     showToast('语音没能保存', 'error');

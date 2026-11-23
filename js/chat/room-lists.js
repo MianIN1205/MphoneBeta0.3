@@ -238,7 +238,7 @@ function sendPickedImage(files) {
         } else if (funcName === '留给彼此' && curC && !curC.isGroup) {
           closeCrPlusPanel();
           openPairNotes(curC.id);
-        } else if (funcName === '一起解牌' && curC && !curC.isGroup) {
+        } else if (funcName === '占卜' && curC && !curC.isGroup) {
           closeCrPlusPanel();
           openTarotReading(curC);
         } else {
@@ -273,6 +273,7 @@ function sendPickedImage(files) {
   var plusOrderMode = null;
 
   if (!Array.isArray(plusPins)) plusPins = [];
+  plusPins = plusPins.map(function(name) { return name === '一起解牌' ? '占卜' : name; });
   plusPins = plusPins.filter(function(name, index, list) {
     return list.indexOf(name) === index && plusItems.some(function(item) { return item.dataset.func === name; });
   }).slice(0, pinMax);

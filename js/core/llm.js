@@ -54,6 +54,7 @@ function partsText(content) {
 function voiceTextForAI(transcript, status) {
   if (!transcript) return '（没有收到音频，也没有可用的转写）';
   if (status === 'manual') return '（语音文字由用户手动填写，可能是原话或声音描述；没有听到录音）：' + transcript;
+  if (status === 'model' || status === 'stt') return '（保存的语音转写；本轮未附原音）：' + transcript;
   var label = status === 'partial' ? '部分转写' : '转写';
   return '（仅收到语音' + label + '，没有听到录音，请按文字理解）：' + transcript;
 }
@@ -238,7 +239,7 @@ function llmToolChat(msgs, opts) {
   var cfg = opts.cfg || getApiCfg(), provider = llmProvider(cfg);
   var prepared = llmPrepare(msgs, cfg, llmCaps(cfg));
   var status = opts.onStatus || function() {};
-  return resolveMediaParts(prepared.messages).then(function() {
+  return resolveMediaParts(prepared.messages, opts.onVoiceNotes).then(function() {
     var base = llmBuild(prepared, cfg, { stream: false, signal: opts.signal, temperature: opts.temperature, maxTokens: opts.maxTokens });
     var body = JSON.parse(base.init.body);
     if (provider === 'anthropic') {
@@ -322,7 +323,7 @@ function llmRequest(msgs, opts) {
   function attempt(caps) {
     var prepared = llmPrepare(msgs, cfg, caps);
     var once = function(off) {
-      return resolveMediaParts(prepared.messages).then(function() {
+      return resolveMediaParts(prepared.messages, opts.onVoiceNotes).then(function() {
         var req = llmBuild(prepared, cfg, Object.assign({}, opts, { thinkOff: off }));
         return fetch(req.url, req.init);
       }).then(function(res) {

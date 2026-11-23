@@ -253,7 +253,7 @@ function groupCommitReply(g, hist, raw, list) {
   });
   var userName = resolveCharAccount(g).nickname || '';
   var segs = [], cur = null, skip = false;
-  raw.split('\n').forEach(function(line) {
+  splitReplyParts(raw).join('\n').split('\n').forEach(function(line) {
     var m = line.match(/^\s*[【\[]?\s*@?([^：:\]】\n]{1,20}?)\s*[\]】]?\s*[：:]\s*(.*)$/);
     var name = m && m[1].trim();
     if (m && byName[name] && groupMuteUntil(g, byName[name])) { skip = true; cur = null; return; }   // 被禁言的人说的不要

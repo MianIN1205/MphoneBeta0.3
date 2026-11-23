@@ -22,7 +22,7 @@ var REPLY_TAGS = [
   { names: ['签名'] },
   { names: ['个性签名'] },
   { names: ['照片', '配图'] },
-  { names: ['看图记录', '回查记录'] },
+  { names: ['看图记录', '回查记录', '语音记录'] },
   { names: ['前情'] },
   { names: ['文件'] },
   { names: ['日程', '提醒', '闹钟'] },
@@ -34,6 +34,21 @@ var REPLY_TAGS = [
 var REPLY_HIDE_RE = new RegExp('<(' + REPLY_TAGS.reduce(function(a, t) { return a.concat(t.names); }, []).join('|') + ')(?![\\u4e00-\\u9fffA-Za-z])[\\s\\S]*?(<\\/\\1>|$)', 'gi');
 function replyHideTags(text) {
   return String(text || '').replace(REPLY_HIDE_RE, '').replace(/<拍一拍[^>]*>(<\/拍一拍>)?/g, '');
+}
+function replySeparators(text) {
+  return String(text || '').split(/(```[\s\S]*?(?:```|$))/).map(function(part, i) {
+    return i % 2 ? part : part.replace(/\x60?(?:\\?[|｜¦][ \t]*){3,}\x60?/g, '|||');
+  }).join('');
+}
+function splitReplyParts(text) {
+  var parts = [''];
+  replySeparators(text).split(/(```[\s\S]*?(?:```|$))/).forEach(function(part, index) {
+    if (index % 2) { parts[parts.length - 1] += part; return; }
+    var split = part.split('|||');
+    parts[parts.length - 1] += split.shift();
+    parts.push.apply(parts, split);
+  });
+  return parts.map(function(part) { return part.trim(); }).filter(Boolean);
 }
 function replyTakeTags(char, text) {
   REPLY_TAGS.forEach(function(t) { if (t.take && typeof window[t.take] === 'function') text = window[t.take](char, text); });
@@ -53,6 +68,7 @@ function commitAssistantReply(hist, raw, list, empty, firstMeta) {
     if (file) outFiles.push(file);
     return '';
   });
+  raw = replySeparators(raw);
   var st = takeStatus(raw);
   raw = st.text; status = st.status;
   // 状态栏：聊天和剧情按各自选中的规则提取并渲染。
@@ -95,7 +111,7 @@ function commitAssistantReply(hist, raw, list, empty, firstMeta) {
   // 剧情配图：<配图>这一幕的画面</配图> 拿出来，回复后面单独一条（设置里剧情配图选了生图才会写）
   var illus = '', isDramaHist = !!(rc && dramaHistories[rc.id] === hist);
   raw = raw.replace(/<配图>([\s\S]*?)(<\/配图>|$)/g, function(_, s) { illus = s.replace(/\s+/g, ' ').trim(); return ''; });
-  var parts = raw.split(/\n?\s*\|\|\|\s*\n?/).map(function(p) { return p.trim(); }).filter(Boolean);
+  var parts = splitReplyParts(raw);
   // 聊天窗口：角色发的照片 <照片>画面</照片> 拆成单独一条（js/chat/img-use.js）
   if (rc && chatHistories[rc.id] === hist && typeof photoSplitParts === 'function') parts = photoSplitParts(parts, hist);
   // 聊天窗口：像微信那样一句一个气泡（每次回复条数设成 1 的角色除外）
@@ -362,7 +378,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
   var toolRun = { entries: [] }, toolDots = typing.bubble.firstChild;
   var toolAnchor = hist[hist.length - 1];
   var generation = genStates[gKey] = { ctrl: ctrl, char: replyChar, typing: typing, previews: function() { return previewRows; } };
-  var historySession = { canSee: !!(mediaCfg.vision && llmCaps(cfg).image), photos: [], sentPhotos: new WeakSet() };
+  var historySession = { canSee: !!(mediaCfg.vision && llmCaps(cfg).image), photos: [], sentPhotos: new WeakSet(), voices: [], sentVoices: new Set() };
   syncGenBtn();
   // 这个角色的聊天室开着（不管在看聊天还是剧情）就画进对应的列表；切去别的角色时不碰那边的列表
   function roomOpen() { return appChatRoom.classList.contains('active') && charList[openingChatCharIdx] === replyChar; }
@@ -415,6 +431,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     if (showing && typeof crMarkOtherView === 'function') crMarkOtherView(isChatView);
     if (showing && !isChatView && currentCrSubView === 'contacts' && typeof crDramaSeen === 'function') crDramaSeen(replyChar);
     historySession.canSee = historySession.canSee && llmCaps(cfg).image;
+    text = saveHistoryVoiceNotes(text, historySession, hist);
     text = saveHistoryPhotoNotes(text, historySession, hist).replace(/<回查记录>[\s\S]*?(<\/回查记录>|$)/g, '').trim();
     if (!isGrp) text = replyTakeTags(replyChar, text);   // 改密码、星星、待关心、记下持有…（见上面的标签表）
     var mark = list ? list.lastChild : null;
@@ -456,6 +473,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     previewRows = []; previewParts = [];
   }
   function previewStream(shown) {
+    shown = replySeparators(shown);
     // 写完一句（句末标点）、一行或 ||| 就先冒出来
     var lastEnd = -1; shown.replace(/[。！？!?…～~][」』”’）)]*/g, function(m0, at) { lastEnd = at + m0.length - 1; return m0; });
     var cut = Math.max(shown.lastIndexOf('\n'), shown.lastIndexOf('|||') >= 0 ? shown.lastIndexOf('|||') + 2 : -1, lastEnd);
@@ -464,7 +482,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     // 没写完的标记、表情包、撤回先不显示，等正式消息
     done = done.replace(/<撤回>[\s\S]*?(<\/撤回>|$)/g, '').replace(/[\[［【]\s*表情包\s*[:：][^\]］】\n]*[\]］】]?/g, '').replace(/<[^>\n]*$/, '');
     if (!rcCfg.actionOn) done = done.replace(actionRe(), '').replace(/[ \t]{2,}/g, ' ');
-    var parts = chatSplitLines(done.split(/\n?\s*\|\|\|\s*\n?/).map(function(p) { return p.trim(); }).filter(Boolean));
+    var parts = chatSplitLines(splitReplyParts(done));
     // 一行刚写完、后面的「〔译〕」或者跟着的动作还没到时，最后一条可能还会变：先不出
     if (parts.length && ACTION_LINE_RE.test(String(parts[parts.length - 1]))) parts.pop();
     var same = previewParts.every(function(p, i) { return parts[i] === p; });
@@ -541,6 +559,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     var options = {
     stream: true,
     signal: ctrl.signal,
+    onVoiceNotes: function(sent) { historySession.sentVoices = sent; },
     cfg: cfg,
     tools: replyTools,
     callTool: replyTools.length ? function(name, args) { return mcpCallFromLLM(name, args, gKey, recordToolCall); } : null,
@@ -565,12 +584,15 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
         previewStream(hidden);
       } else {
         if (!started) { typing.bubble.innerHTML = ''; started = true; }
-        typing.bubble.textContent = shown;
+        typing.bubble.textContent = splitReplyParts(shown).join('\n');
       }
       scrollLive();
     }
     };
-    return llmRequest(baseMsgs.concat(rules), options).then(function(text) {
+    function requestRules() {
+      return historySession.voices.length ? rules.concat({ role: 'system', content: '只对带转写编号且真的听清的原音，在正常回复末尾附 <语音记录>{"v1":"实际听到的原话"}</语音记录>。用原音旁的编号，尽量逐字转写；听不清就省略，不能根据上下文补写。' }) : rules;
+    }
+    return llmRequest(baseMsgs.concat(requestRules()), options).then(function(text) {
       var lookup = canRecall && String(text || '').match(/<回查记录>([\s\S]*?)<\/回查记录>/);
       if (!lookup) return text;
       var hit = searchChatHistory(hist, lookup[1], currentTurn);
@@ -583,7 +605,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
       aiText = '';
       clearPreview();
       typing.bubble.textContent = '正在回看聊天记录…';
-      return llmRequest(reread.concat(rules), Object.assign({}, options, { tools: null, callTool: null }));
+      return llmRequest(reread.concat(requestRules()), Object.assign({}, options, { tools: null, callTool: null }));
     });
   })
   .then(function(full) {

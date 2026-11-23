@@ -71,7 +71,9 @@ document.getElementById('sttTestBtn').addEventListener('click', function() {
 // 语音识别用的接口：自己填的优先，留空就用主 API
 function sttEndpoint() {
   var main = getApiCfg();
-  return { url: sttCfg.url || main.url, key: sttCfg.key || main.key, model: sttCfg.model || 'whisper-1' };
+  var url = sttCfg.url || main.url;
+  var sameEndpoint = !sttCfg.url || String(sttCfg.url).replace(/\/+$/, '') === String(main.url || '').replace(/\/+$/, '');
+  return { url: url, key: sttCfg.key || (sameEndpoint ? main.key : ''), model: sttCfg.model || 'whisper-1' };
 }
 function sttReady() { var e = sttEndpoint(); return !!(e.url && e.key); }
 
@@ -150,20 +152,29 @@ function voiceToWavBase64(src) {
 }
 
 // 发送前把消息里的录音占位换成真正的音频数据
-function resolveMediaParts(msgs) {
-  var jobs = [];
+function resolveMediaParts(msgs, onVoiceNotes) {
+  var jobs = [], sent = new Set(), labeled = new Set();
   msgs.forEach(function(msg) {
     if (!Array.isArray(msg.content)) return;
     msg.content.forEach(function(part, i) {
       if (part.type !== 'input_audio' || !part._voiceSrc) return;
       jobs.push(voiceToWavBase64(part._voiceSrc).then(function(b64) {
-        msg.content[i] = { type: 'input_audio', input_audio: { data: b64, format: 'wav' } };
+        var audio = { type: 'input_audio', input_audio: { data: b64, format: 'wav' } };
+        if (part._voiceNoteId && onVoiceNotes) {
+          sent.add(part._voiceNoteId);
+          labeled.add(msg);
+          msg.content[i] = [{ type: 'text', text: '下一段原音的转写编号：' + part._voiceNoteId }, audio];
+        } else msg.content[i] = audio;
       }, function() {
         msg.content[i] = { type: 'text', text: voiceTextForAI(part._transcript, part._transcriptStatus) };
       }));
     });
   });
-  return Promise.all(jobs).then(function() { return msgs; });
+  return Promise.all(jobs).then(function() {
+    labeled.forEach(function(msg) { msg.content = msg.content.flat(); });
+    if (onVoiceNotes) onVoiceNotes(sent);
+    return msgs;
+  });
 }
 
 // ---------- 测试：当前模型能不能真的看到图片、听到语音 ----------

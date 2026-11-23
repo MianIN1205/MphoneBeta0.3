@@ -523,7 +523,7 @@ function buildMsgs(idx, histOverride, historySession, preview) {
 
   var rawHist = history.slice().reverse().map(function(m, i) {
     // 先为最近发来的图片分配看图记录编号，最终仍按聊天原顺序发送。
-    var c = historyPhotoPrompt(msgContentForAI(m, history.length - 1 - i >= richFrom, char), m, historySession, true);
+    var c = historyVoicePrompt(historyPhotoPrompt(msgContentForAI(m, history.length - 1 - i >= richFrom, char), m, historySession, true), m, historySession);
     // 聊天窗口：以前存下的没标点的气泡补个句号再给 TA 看，免得 TA 学着不写标点（小手机靠标点分气泡）
     if (!isDrama && m.role === 'assistant' && typeof c === 'string' && /[\u4e00-\u9fffA-Za-z0-9]$/.test(c)) c += '。';
     return { role: m.role, content: c };
