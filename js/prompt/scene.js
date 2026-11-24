@@ -114,6 +114,7 @@ function promptPreviewMedia(message) {
 function renderPromptPreview(idx, char, drama) {
   var list = document.getElementById('promptPreviewList'), totalEl = document.getElementById('promptPreviewTotal'), msgs;
   list.replaceChildren();
+  list.scrollTop = 0;
   totalEl.textContent = '';
   try {
     var format = [].concat(drama ? dramaFormatRules(char) : chatFormatRules(char), cotRules(drama, char));
@@ -170,14 +171,34 @@ function renderPromptPreview(idx, char, drama) {
     var heading = document.createElement(history ? 'summary' : 'div');
     heading.className = 'pp-section-title';
     heading.textContent = pair[1] + (history ? ' · 从旧到新 · ' + historyCount + ' 条' : '');
-    section.append(heading, ...items);
+    section.appendChild(heading);
     if (history && msgs.some(function(m) { return m.previewMedia || Array.isArray(m.content); })) {
       var guide = document.createElement('p');
       guide.className = 'pp-media-hint';
       guide.textContent = char.isGroup && groupSoloOn(char)
         ? '这里按群聊配置预估。成员各用自己的模型时，附件以各自接口支持为准。'
         : '附件按当前配置预估。发送时可能因接口兼容或音频处理问题改用文字，回查资料会在发送时另行加入。';
-      heading.after(guide);
+      section.appendChild(guide);
+    }
+    if (history && items.length) {
+      var scroll = document.createElement('div');
+      scroll.className = 'pp-history-scroll';
+      scroll.tabIndex = 0;
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', '聊天记录，从旧到新');
+      scroll.append(...items);
+      section.appendChild(scroll);
+      section.addEventListener('toggle', function() {
+        if (!section.open) return;
+        scroll.scrollTop = scroll.scrollHeight;
+        var visible = list.getBoundingClientRect();
+        var bounds = section.getBoundingClientRect();
+        if (bounds.bottom > visible.bottom) {
+          list.scrollTop += Math.min(bounds.bottom - visible.bottom, Math.max(0, bounds.top - visible.top));
+        }
+      });
+    } else {
+      section.append(...items);
     }
     list.appendChild(section);
   });

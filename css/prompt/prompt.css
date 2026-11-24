@@ -430,7 +430,7 @@
 .auto-row .pf-radio-btn, .sb-row .pf-radio-btn { flex: none; padding: 4px 10px; line-height: 1.35; border-radius: 8px; white-space: nowrap; }
 
 /* 注入预览（js/prompt/scene.js） */
-.prompt-preview-modal { width: 330px; max-height: 82%; }
+.prompt-preview-modal { width: min(330px, calc(100% - 24px)); height: 82%; max-height: 82%; }
 .prompt-preview-total { flex-shrink: 0; font-size: 11px; color: #806570; text-align: center; }
 .prompt-preview-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .prompt-preview-item { border-radius: 10px; background: rgba(250,244,246,0.95); padding: 6px 9px; }
@@ -443,11 +443,14 @@
 .pp-heads { flex: 1; min-width: 0; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-tk, .pp-depth { flex-shrink: 0; font-size: 10px; color: #806570; }
 .pp-depth { padding: 1px 4px; border-radius: 5px; color: #795563; background: #f1e3ea; }
-.pp-section { display: flex; flex-direction: column; gap: 5px; }
+.pp-section { flex-shrink: 0; display: flex; flex-direction: column; gap: 5px; }
 .pp-section-title { padding: 5px 4px 1px; color: #745262; font-size: 12px; font-weight: 600; }
 .pp-history { border-block: 1px solid #eed4df; }
 .pp-history > summary { cursor: pointer; padding: 8px 4px; }
-.pp-history > .prompt-preview-item { margin: 0 0 5px; }
+.pp-history-scroll { max-height: min(320px, 40dvh); overflow-y: auto; overscroll-behavior-y: contain; }
+.pp-history-scroll > .prompt-preview-item { margin-bottom: 5px; }
+.pp-history-scroll > .prompt-preview-item:last-child { margin-bottom: 0; }
+.pp-history-scroll .prompt-preview-text { max-height: none; overflow: visible; }
 .pp-media-hint { margin: 0 4px 7px; font-size: 11px; line-height: 1.5; color: #806570; }
 
 /* 剧情设置（默认剧情预设上面那张卡片，js/prompt/presets.js） */
