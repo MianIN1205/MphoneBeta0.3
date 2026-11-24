@@ -15,12 +15,30 @@ function llmModelName(cfg) { return String(cfg.model || '').toLowerCase(); }
 
 // 旧记录只存了模型名，无法归到具体接口，所以能力重新按接口记录。
 var llmMediaSupport = mphoneStore.load('mphone_media_support', {}) || {};
+var MEDIA_REJECT_EXPIRE = 24 * 60 * 60 * 1000;
+// 给没有独立时间戳的旧失败记录补上时间，避免永久使用文字回退。
+(function() {
+  var changed = false, now = Date.now();
+  Object.keys(llmMediaSupport).forEach(function(key) {
+    var entry = llmMediaSupport[key];
+    if (!entry) return;
+    if (entry.image === false && !entry._imageAt) { entry._imageAt = entry._at || now; changed = true; }
+    if (entry.audio === false && !entry._audioAt) { entry._audioAt = entry._at || now; changed = true; }
+    if (entry._at) { delete entry._at; changed = true; }
+  });
+  if (changed) mphoneStore.save('mphone_media_support', llmMediaSupport);
+})();
 function llmMediaKey(cfg) {
   return JSON.stringify([String(cfg.url || '').trim().replace(/\/+$/, ''), cfg.model]);
 }
 function llmRememberMedia(cfg, support) {
   var key = llmMediaKey(cfg);
-  llmMediaSupport[key] = Object.assign({}, llmMediaSupport[key], support);
+  var entry = Object.assign({}, llmMediaSupport[key], support), now = Date.now();
+  if (support.image === false) entry._imageAt = now;
+  else if (support.image === true) delete entry._imageAt;
+  if (support.audio === false) entry._audioAt = now;
+  else if (support.audio === true) delete entry._audioAt;
+  llmMediaSupport[key] = entry;
   mphoneStore.save('mphone_media_support', llmMediaSupport);
 }
 function llmCaps(cfg) {
@@ -28,7 +46,10 @@ function llmCaps(cfg) {
   var noImage = /deepseek(?!.*vl)|o1-mini|o3-mini|qwq|(^|[-\/])r1\b|kimi-k2|-text-/.test(m);
   var noAudio = /claude|deepseek|grok|(^|[-\/])o[1-4]\b|kimi|glm|llama|qwen(?!.*omni)|gpt-(4|5)(?!.*audio)|mistral(?!.*voxtral)/.test(m);
   var support = llmMediaSupport[llmMediaKey(cfg)] || {};
-  return { image: support.image ?? !noImage, audio: !anthropic && (support.audio ?? !noAudio) };
+  var now = Date.now();
+  var image = support._imageAt && now - support._imageAt >= MEDIA_REJECT_EXPIRE ? undefined : support.image;
+  var audio = support._audioAt && now - support._audioAt >= MEDIA_REJECT_EXPIRE ? undefined : support.audio;
+  return { image: image ?? !noImage, audio: !anthropic && (audio ?? !noAudio) };
 }
 
 function llmRejectedMedia(err, msgs, caps) {
@@ -420,7 +441,7 @@ function llmRequest(msgs, opts) {
     return attempt(Object.assign({}, caps, rejected), false).then(function(text) {
       llmRememberMedia(cfg, rejected);
       var kinds = Object.keys(rejected).map(function(kind) { return kind === 'image' ? '图片' : '音频'; });
-      showToast('当前接口不支持' + kinds.join('和') + '，已用文字发送', 'plain');
+      showToast('当前接口拒收' + kinds.join('和') + '，已用文字发送。结果保留 24 小时，可在设置里重新测试。', 'plain');
       return text;
     });
   }
