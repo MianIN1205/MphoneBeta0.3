@@ -197,9 +197,9 @@ function renderPromptPreview(idx, char, drama) {
     if (history && msgs.some(function(m) { return m.previewMedia || Array.isArray(m.content); })) {
       var guide = document.createElement('p');
       guide.className = 'pp-media-hint';
-      guide.textContent = char.isGroup && groupSoloOn(char)
-        ? '这里按群聊配置预估。成员各用自己的模型时，附件以各自接口支持为准。'
-        : '附件按当前配置预估。发送时可能因接口兼容或音频处理问题改用文字，回查资料会在发送时另行加入。';
+      guide.textContent = char.isGroup
+        ? '群聊附件按当前配置预估。成员各用自己的模型时，附件以各自接口支持为准。'
+        : '原件随本轮新消息发送。旧附件默认带描述或转写，引用和回查可重新附上原件。接口兼容或音频处理失败时可能改用文字。';
       section.appendChild(guide);
     }
     if (history && items.length) {

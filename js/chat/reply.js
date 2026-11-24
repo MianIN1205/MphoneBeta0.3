@@ -538,8 +538,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     // 群聊开了「成员各用自己的模型」：一个个人单独问一遍，拼成一段再按「名字：」拆（js/chat/group.js）
     if (isGrp && typeof groupSoloOn === 'function' && groupSoloOn(replyChar)) return groupSoloText(replyChar, hist, ctrl.signal);
     var msgs = buildMsgs(replyCharIdx, hist, historySession);
-    var currentTurn = [];
-    for (var i = hist.length - 1; i >= 0 && hist[i].role === 'user'; i--) currentTurn.unshift(hist[i]);
+    var currentTurn = hist.slice(chatCurrentTurnStart(hist));
     var records = historyQuotes(hist, currentTurn);
     var question = currentTurn.filter(function(m) { return !m.recalled && !m.note && !m.imgSrc && !m.file; }).map(function(m) { return m.voice ? m.transcript || '' : m.content; }).join(' ');
     var correctingOldTopic = isChatView && historyCorrectingTopic(question);

@@ -478,13 +478,16 @@ function buildMsgs(idx, histOverride, historySession, preview) {
       recalledText = chatTextRecall(fullHistory, history);
       if (recalledText) msgs.push(recalledText);
     }
-    // 注意力范围内的消息附带真实图片 / 语音，更早的只用文字说明（省流量和费用）
+    // 其他引用聊天的功能沿用原来的媒体范围。
     richFrom = [].concat.apply([], rounds.slice(0, Math.max(0, rounds.length - cc.attention))).length;
     if (rounds.length > cc.attention) {
       attentionNote = { role: 'system', content: '【注意力】下面的记录中，请重点关注并回应最近 ' + cc.attention +
         ' 个回合的内容；更早的部分只作为背景参考，不必逐条回应。' };
     }
   }
+
+  // 普通对话只重复当前轮所需的原件。旧附件的原件由引用和回查按需补入。
+  if (preview || historySession) richFrom = chatCurrentTurnStart(history);
 
   // 记忆库：珍贵的回忆 + 和最近对话相关的记忆 + 怎样记下新记忆（权限在角色设置「扩展」页）
   var memSys = (typeof memoryContextFor === 'function') ? memoryContextFor(char, history) : '';
@@ -614,7 +617,7 @@ function msgTextForAI(m) {
   return c;
 }
 
-// 发给 AI 的消息内容。rich = 是否附带真实媒体（只对注意力范围内的用户消息）：
+// 发给 AI 的消息内容。rich = 是否附带真实媒体（仅用户发送的消息）：
 // 图片和录音交给支持对应媒体的模型，语音转写作为音频不可用时的替代内容。
 function msgContentForAI(m, rich, char) {
   var text = msgTextForAI(m);

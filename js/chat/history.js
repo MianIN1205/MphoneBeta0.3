@@ -9,6 +9,11 @@ function getChatHistory(idx) { var k = charKey(idx); if (!chatHistories[k]) chat
 function getDramaHistory(idx) { var k = charKey(idx); if (!dramaHistories[k]) dramaHistories[k] = []; return dramaHistories[k]; }
 // 仅记录本次打开小手机期间的附件数量，不保存原文或附件。
 var lastChatRequestMedia = new WeakMap();
+function chatCurrentTurnStart(history) {
+  var start = history.length;
+  while (start > 0 && history[start - 1].role === 'user') start--;
+  return start;
+}
 function chatMessagePhotos(message) {
   return Array.isArray(message.images) && message.images.length ? message.images : message.imgSrc ? [{ src: message.imgSrc }] : [];
 }
