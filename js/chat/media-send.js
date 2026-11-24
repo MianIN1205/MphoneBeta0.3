@@ -184,9 +184,9 @@ function mediaTestResult(text, ok) {
   el.textContent = text;
   el.style.color = ok === true ? '#4f9a6a' : ok === false ? '#c0506a' : '';
 }
-function mediaTestAsk(content, cfg) {
+function mediaTestAsk(messages, cfg, stream) {
   // 测试时原样发送图片 / 音频，不自动换成文字
-  return llmRequest([{ role: 'user', content: content }], { stream: false, cfg: cfg, keepMedia: true, temperature: 0 })
+  return llmRequest(messages, { stream: !!stream, cfg: cfg, keepMedia: true, temperature: 0 })
     .then(function(text) { return String(text || '').trim(); });
 }
 function mediaTestNumberMatches(reply, expected) {
@@ -194,7 +194,7 @@ function mediaTestNumberMatches(reply, expected) {
   var answer = reply.normalize('NFKC').replace(/(?:\s*\[cite:\s*\d+(?:\s*,\s*\d+)*\s*\])+\s*$/i, '').trim();
   return answer === String(expected);
 }
-document.getElementById('mediaTestImgBtn').addEventListener('click', function() {
+function mediaTestImage(asChat) {
   var cfg = readDraftApiConfig();
   var code = String(Math.floor(1000 + Math.random() * 9000));
   var c = document.createElement('canvas');
@@ -203,16 +203,24 @@ document.getElementById('mediaTestImgBtn').addEventListener('click', function() 
   x.fillStyle = '#fff'; x.fillRect(0, 0, 320, 160);
   x.fillStyle = '#222'; x.font = 'bold 72px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText(code, 160, 80);
-  mediaTestResult('正在测试识图…');
-  mediaTestAsk([
-    { type: 'text', text: '图片里写的是什么数字？只回答数字。' },
-    { type: 'image_url', image_url: { url: c.toDataURL('image/png') } }
-  ], cfg).then(function(reply) {
+  var label = asChat ? '聊天发图' : '识图';
+  var question = '图片里写的是什么数字？只回答数字。';
+  var src = asChat ? c.toDataURL('image/jpeg', 0.85) : c.toDataURL('image/png');
+  var messages = asChat
+    ? [{ role: 'user', content: msgContentForAI({ role: 'user', imgSrc: src }, true, null) }, { role: 'user', content: question }]
+    : [{ role: 'user', content: [{ type: 'text', text: question }, { type: 'image_url', image_url: { url: src } }] }];
+  mediaTestResult('正在测试' + label + '…');
+  mediaTestAsk(messages, cfg, asChat).then(function(reply) {
     var ok = mediaTestNumberMatches(reply, code);
     if (ok) llmRememberMedia(cfg, { image: true });
-    mediaTestResult(ok ? '✓ 识图正常：图里是 ' + code + '，模型回答「' + reply.slice(0, 30) + '」'
-                       : '✗ 识图测试未通过：图里是 ' + code + '，模型回答「' + reply.slice(0, 40) + '」', ok);
-  }, function(err) { mediaTestResult('✗ 识图请求失败：' + err.message, false); });
+    mediaTestResult((ok ? '✓ ' + label + '正常' : '✗ ' + label + '测试未通过') +
+      '：图里是 ' + code + '，模型回答「' + reply.slice(0, 40) + '」', ok);
+  }, function(err) { mediaTestResult('✗ ' + label + '请求失败：' + err.message, false); });
+}
+document.getElementById('mediaTestImgBtn').addEventListener('click', function() { mediaTestImage(false); });
+document.getElementById('mediaTestChatImgBtn').addEventListener('click', function() {
+  if (!mediaCfg.vision) return mediaTestResult('请先打开「发送真实图片」，再测试聊天发图。', false);
+  mediaTestImage(true);
 });
 document.getElementById('mediaTestAudioBtn').addEventListener('click', function() {
   var cfg = readDraftApiConfig();
@@ -233,10 +241,10 @@ document.getElementById('mediaTestAudioBtn').addEventListener('click', function(
   var bin = '';
   for (var p = 0; p < bytes.length; p += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(p, p + 0x8000));
   mediaTestResult('正在测试语音…');
-  mediaTestAsk([
+  mediaTestAsk([{ role: 'user', content: [
     { type: 'text', text: '这段音频里一共有几声「嘟」的提示音？只回答一个阿拉伯数字。' },
     { type: 'input_audio', input_audio: { data: btoa(bin), format: 'wav' } }
-  ], cfg).then(function(reply) {
+  ] }], cfg).then(function(reply) {
     var ok = mediaTestNumberMatches(reply, count);
     if (ok) llmRememberMedia(cfg, { audio: true });
     mediaTestResult(ok ? '✓ 语音正常：模型听到了 ' + count + ' 声'

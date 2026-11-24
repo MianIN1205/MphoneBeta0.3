@@ -130,7 +130,9 @@ function buildGroupMsgs(g, history, preview) {
       var who = m.speaker ? charList[findCharIdx(m.speaker)] : null;
       var line = m.whisperChat ? msgTextForAI(m) : (who ? groupLabel(who) : names[0] || '群友') + '：' + msgTextForAI(m);
       var last = out[out.length - 1];
-      if (last && last.role === 'assistant') last.content += '\n' + line; else out.push({ role: 'assistant', content: line });
+      var media = preview && !m.recalled ? promptPreviewMedia(m) : null;
+      if (last && last.role === 'assistant' && !media && !last.previewMedia) last.content += '\n' + line;
+      else out.push({ role: 'assistant', content: line, previewMedia: media });
     } else {
       var entry = { role: 'user', content: msgContentForAI(m, i >= richFrom, g) };
       if (preview && !m.recalled) entry.previewMedia = promptPreviewMedia(m);

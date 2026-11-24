@@ -434,7 +434,8 @@
 .prompt-preview-total { flex-shrink: 0; font-size: 11px; color: #806570; text-align: center; }
 .prompt-preview-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .prompt-preview-item { border-radius: 10px; background: rgba(250,244,246,0.95); padding: 6px 9px; }
-.prompt-preview-item summary { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: #805f6b; cursor: pointer; }
+.pp-item-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: #805f6b; }
+.prompt-preview-item summary { cursor: pointer; }
 .prompt-preview-item summary::after { content: '›'; flex: 0 0 auto; line-height: 1; }
 .prompt-preview-item[open] summary::after { transform: rotate(90deg); }
 .prompt-preview-item.role-user { background: rgba(236,244,252,0.95); }
@@ -452,6 +453,7 @@
 .pp-history-scroll > .prompt-preview-item:last-child { margin-bottom: 0; }
 .pp-history-scroll .prompt-preview-text { max-height: none; overflow: visible; }
 .pp-media-hint { margin: 0 4px 7px; font-size: 11px; line-height: 1.5; color: #806570; }
+.pp-media-receipt { font-weight: 600; }
 
 /* 剧情设置（默认剧情预设上面那张卡片，js/prompt/presets.js） */
 .plot-card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }

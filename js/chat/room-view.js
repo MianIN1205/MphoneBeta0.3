@@ -6,6 +6,7 @@ var crViewContacts = document.querySelector('#chatRoomContent .cr-view[data-crvi
 var crBottomBar    = document.getElementById('crBottomBar') || document.querySelector('#appChatRoom .chat-room-bottom');
 var crPlusBtn      = document.getElementById('crPlusBtn');
 var crPlusPanel    = document.getElementById('crPlusPanel');
+var crPlusPageNeedsReset = true;
 var currentCrSubView = 'chat';
 
 var crEmojiBtn   = document.getElementById('crEmojiToggleBtn');
@@ -55,6 +56,7 @@ function switchChatRoomSubView(view) {
   appChatRoom.classList.toggle('no-drama', noDrama);
   appChatRoom.classList.toggle('is-group', !!(vc0 && vc0.isGroup));
   var isDrama = (view === 'contacts');
+  if (currentCrSubView !== view || !appChatRoom.classList.contains('active')) crPlusPageNeedsReset = true;
   (isDrama ? msgBtnContacts : msgBtnChat).classList.remove('has-new');
   currentCrSubView = isDrama ? 'contacts' : 'chat';
   var vc = charList[openingChatCharIdx];

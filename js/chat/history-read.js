@@ -265,9 +265,12 @@ function withChatHistoryReads(msgs, records, cfg, session, query) {
   return msgs.slice(0, index).concat({ role: 'user', content: parts }, msgs.slice(index));
 }
 
-function historyPhotoText(message) {
+function historyPhotoText(message, formatLabel) {
   return (message.photoNotes || []).map(function(note, index) {
-    return note ? '第 ' + (index + 1) + ' 张' + (note.labeled ? '：' : '（旧版模型描述）：') + note.scene + (note.detail ? '；留意：' + note.detail : '') : '';
+    if (!note) return '';
+    var label = formatLabel ? formatLabel(index + 1, note.labeled) :
+      '第 ' + (index + 1) + ' 张' + (note.labeled ? '：' : '（旧版模型描述）：');
+    return label + note.scene + (note.detail ? '；留意：' + note.detail : '');
   }).filter(Boolean).join('\n');
 }
 

@@ -567,6 +567,7 @@ function sendMsg(userText, requestOnly, onDone, onFailure) {
     stream: true,
     signal: ctrl.signal,
     onVoiceNotes: function(sent) { historySession.sentVoices = sent; },
+    onRequestMedia: function(counts) { lastChatRequestMedia.set(hist, { time: Date.now(), counts: counts }); },
     cfg: cfg,
     tools: replyTools,
     toolReplyContext: replyFocus,

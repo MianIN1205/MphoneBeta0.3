@@ -101,14 +101,22 @@ function openPromptPreview() {
   document.getElementById('promptPreviewOverlay').classList.add('open');
 }
 function promptPreviewMedia(message) {
+  if (message.sticker) return { kind: 'sticker', title: '表情包 · ' + (message.sticker.name || '未命名') };
   if (message.voice) {
-    if (!message.transcript) return '无可用转写';
-    return message.voice.transcriptStatus === 'partial' ? '部分转写' : '仅转写';
+    var status = message.voice.transcriptStatus;
+    var source = { manual: '手动填写', model: '角色听写', stt: '识别接口转写', browser: '浏览器转写', partial: '浏览器部分转写' }[status];
+    return { kind: 'voice', title: '语音', badge: !message.transcript ? '无可用转写' : status === 'partial' ? '部分转写' : '仅转写',
+      detail: message.transcript ? '[' + (source || '已保存的转写') + '] ' + message.transcript : '' };
   }
   if (message.imgSrc || message.textImg) {
-    return message.textImg || historyPhotoText(message) ? '仅画面描述' : '无画面描述';
+    var ordinals = '一 二 三 四 五 六 七 八 九 十 十一 十二 十三 十四'.split(' ');
+    var notes = historyPhotoText(message, function(number, labeled) {
+      return '[第' + (ordinals[number - 1] || number) + '张图] ' + (labeled ? '' : '（旧版描述）');
+    });
+    var detail = notes || (message.textImg ? '[第一张图] ' + message.textImg : '');
+    return { kind: 'photo', title: '图片', badge: detail ? '仅画面描述' : '无画面描述', detail: detail };
   }
-  return '';
+  return null;
 }
 
 function renderPromptPreview(idx, char, drama) {
@@ -116,36 +124,40 @@ function renderPromptPreview(idx, char, drama) {
   list.replaceChildren();
   list.scrollTop = 0;
   totalEl.textContent = '';
+  var historySource = drama ? getDramaHistory(idx) : getChatHistory(idx);
+  var lastRequest = lastChatRequestMedia.get(historySource);
   try {
     var format = [].concat(drama ? dramaFormatRules(char) : chatFormatRules(char), cotRules(drama, char));
-    msgs = buildMsgs(idx, drama ? getDramaHistory(idx) : getChatHistory(idx), null, true)
+    msgs = buildMsgs(idx, historySource, null, true)
       .concat(format.map(function(m) { return Object.assign({}, m, { previewZone: 'after' }); }));
   } catch (e) { list.textContent = '无法预览提示词：' + e.message; return; }
   var caps = llmCaps(getApiCfg(char));
   var slots = { before: [], history: [], after: [] }, total = 0, historyCount = 0;
   msgs.forEach(function(m) {
     var content = llmMediaContent(m.content, caps);
-    var text = partsText(content), media = m.previewMedia;
+    var text = partsText(content), media = m.previewMedia, badgeText = media && media.badge;
     if (Array.isArray(content)) {
       var imageCount = content.filter(function(part) { return part.type === 'image_url'; }).length;
-      if (imageCount) media = imageCount === 1 ? '原图' : imageCount + ' 张原图';
-      if (content.some(function(part) { return part.type === 'input_audio'; })) media = '原音';
+      if (imageCount) badgeText = media && media.kind === 'sticker' ? '附图' : imageCount === 1 ? '原图' : imageCount + ' 张原图';
+      if (content.some(function(part) { return part.type === 'input_audio'; })) badgeText = '原音';
     }
     var tokens = estTokens(text);
     total += tokens;
     if (m.previewZone === 'history' && m.promptDepth === undefined) historyCount++;
     var heading = m.previewZone !== 'history' && text.match(/^【([^】\n]+)】/);
-    var box = document.createElement('details');
+    var detail = media ? media.detail : text;
+    var box = document.createElement(detail ? 'details' : 'div');
     box.className = 'prompt-preview-item role-' + m.role;
-    var head = document.createElement('summary');
+    var head = document.createElement(detail ? 'summary' : 'div');
+    head.className = 'pp-item-head';
     var title = document.createElement('span');
     title.className = 'pp-heads';
-    title.textContent = m.previewLabel || (heading && heading[1]) || text.replace(/\s+/g, ' ').trim();
+    title.textContent = (media && media.title) || m.previewLabel || (heading && heading[1]) || text.replace(/\s+/g, ' ').trim();
     head.append(title);
-    if (media) {
+    if (badgeText) {
       var badge = document.createElement('span');
       badge.className = 'pp-depth';
-      badge.textContent = media;
+      badge.textContent = badgeText;
       head.append(badge);
     }
     if (m.promptDepth !== undefined) {
@@ -158,10 +170,13 @@ function renderPromptPreview(idx, char, drama) {
     count.className = 'pp-tk';
     count.textContent = tokens.toLocaleString() + ' Token';
     head.append(count);
-    var body = document.createElement('div');
-    body.className = 'prompt-preview-text';
-    body.textContent = text;
-    box.appendChild(head); box.appendChild(body);
+    box.appendChild(head);
+    if (detail) {
+      var body = document.createElement('div');
+      body.className = 'prompt-preview-text';
+      body.textContent = detail;
+      box.appendChild(body);
+    }
     slots[m.previewZone || 'before'].push(box);
   });
   [['before', '聊天记录前'], ['history', '聊天记录'], ['after', '聊天记录后']].forEach(function(pair) {
@@ -172,6 +187,13 @@ function renderPromptPreview(idx, char, drama) {
     heading.className = 'pp-section-title';
     heading.textContent = pair[1] + (history ? ' · 从旧到新 · ' + historyCount + ' 条' : '');
     section.appendChild(heading);
+    if (history && lastRequest) {
+      var receipt = document.createElement('p');
+      receipt.className = 'pp-media-hint pp-media-receipt';
+      receipt.textContent = new Date(lastRequest.time).toLocaleTimeString('zh-CN', { hour12: false }) +
+        ' 最近一次请求 · 原图 ' + lastRequest.counts.images + ' 张 · 原音 ' + lastRequest.counts.audio + ' 条';
+      section.appendChild(receipt);
+    }
     if (history && msgs.some(function(m) { return m.previewMedia || Array.isArray(m.content); })) {
       var guide = document.createElement('p');
       guide.className = 'pp-media-hint';

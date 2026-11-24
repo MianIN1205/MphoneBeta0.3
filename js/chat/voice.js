@@ -271,7 +271,6 @@ function createVoiceBubble(m, list, empty) {
   bubble.addEventListener('click', function(e) {
     if (e.target === playBtn || playBtn.contains(e.target)) return;
     transcriptWrap.inert = !transcriptWrap.classList.toggle('open');
-    list.scrollTop = list.scrollHeight;
   });
 
   list.scrollTop = list.scrollHeight;
@@ -329,7 +328,7 @@ function createVoiceTranscript(message, status) {
     input.value = message.transcript || '';
     input.hidden = false;
     paint();
-    input.focus();
+    input.focus({ preventScroll: true });
   });
   input.addEventListener('blur', function() { done(true); });
   input.addEventListener('keydown', function(e) {
@@ -337,7 +336,7 @@ function createVoiceTranscript(message, status) {
     if (e.isComposing || (!save && e.key !== 'Escape')) return;
     e.preventDefault();
     done(save);
-    button.focus();
+    button.focus({ preventScroll: true });
   });
   retry.addEventListener('click', async function() {
     if (!sttReady()) { showToast('先配置语音识别接口', 'plain'); return; }
@@ -696,7 +695,7 @@ function finishRecording(send, review) {
     if (quote) m.quote = quote;
     if (transcript.text) {
       m.transcript = transcript.text;
-      if (transcript.partial) m.voice.transcriptStatus = 'partial';
+      m.voice.transcriptStatus = transcript.partial ? 'partial' : 'browser';
     }
     if (review) openVoiceReview(hist, char, m);
     else saveRecordedVoice(hist, m);

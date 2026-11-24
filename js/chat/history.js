@@ -7,6 +7,8 @@
 function charKey(idx) { return charList[idx] ? charList[idx].id : '_none'; }
 function getChatHistory(idx) { var k = charKey(idx); if (!chatHistories[k]) chatHistories[k] = []; return chatHistories[k]; }
 function getDramaHistory(idx) { var k = charKey(idx); if (!dramaHistories[k]) dramaHistories[k] = []; return dramaHistories[k]; }
+// 仅记录本次打开小手机期间的附件数量，不保存原文或附件。
+var lastChatRequestMedia = new WeakMap();
 function chatMessagePhotos(message) {
   return Array.isArray(message.images) && message.images.length ? message.images : message.imgSrc ? [{ src: message.imgSrc }] : [];
 }

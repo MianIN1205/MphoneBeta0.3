@@ -366,6 +366,7 @@ function readerChatEnsureRoom(c) {
   var idx = findCharIdx(c.id);
   if (idx < 0) return false;
   if (!(appChatRoom.classList.contains('active') && openingChatCharIdx === idx)) {
+    crPlusPageNeedsReset = true;
     openingChatCharIdx = idx;
     chatRoomTitle.textContent = c.charAlias || c.charName || '未命名';
     applyChatRoomStyle(c);   // 以前没套这个角色的美化，回到聊天时状态栏、主题都是默认的

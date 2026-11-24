@@ -114,7 +114,17 @@ function llmPrepare(msgs, cfg, caps) {
     // 严格接口会把系统消息统一提到开头。深度条目改用带标记的用户消息，保留插入点。
     if (strict && m.role === 'system' && Number.isInteger(m.promptDepth)) {
       out.push({ role: 'user', content: '【插入提示】\n' + partsText(c) });
-    } else out.push({ role: m.role, content: c });
+      return;
+    }
+    // 图片后紧跟的提问应和图片放在同一个用户消息块里，兼容只处理最后一条用户消息的转发接口。
+    var last = out[out.length - 1];
+    if (!strict && m.role === 'user' && typeof m.content === 'string' && !Number.isInteger(m.promptDepth) &&
+        last && last.role === 'user' && Array.isArray(last.content) &&
+        last.content.some(function(part) { return part.type === 'image_url'; })) {
+      last.content.push({ type: 'text', text: c });
+    } else {
+      out.push({ role: m.role, content: c });
+    }
   });
   if (!strict) return { system: '', messages: out };
 
@@ -264,6 +274,19 @@ function msgsHavePart(msgs, type) {
   return msgs.some(function(m) { return Array.isArray(m.content) && m.content.some(function(p) { return p.type === type; }); });
 }
 
+function llmReportRequestMedia(messages, report) {
+  if (!report) return;
+  var counts = { images: 0, audio: 0 };
+  messages.forEach(function(message) {
+    if (!Array.isArray(message.content)) return;
+    message.content.forEach(function(part) {
+      if (part.type === 'image_url' && part.image_url && part.image_url.url) counts.images++;
+      if (part.type === 'input_audio' && part.input_audio && part.input_audio.data) counts.audio++;
+    });
+  });
+  report(counts);
+}
+
 // =============================================
 // 工具调用（MCP）：opts.tools = [{ name, description, parameters }]，opts.callTool(name, args) → Promise<文字结果>
 // 带工具时不边写边显示：先让模型决定要不要用工具，用完把结果交回去，最多 5 轮，最后的回答一次性给出
@@ -287,6 +310,7 @@ function llmToolChat(msgs, opts) {
     var round = 0;
     function send() {
       if (opts.signal && opts.signal.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
+      llmReportRequestMedia(prepared.messages, opts.onRequestMedia);
       return fetch(base.url, Object.assign({}, base.init, { body: JSON.stringify(body) })).then(function(res) {
         if (!res.ok) return apiError(res);
         return readReplyBody(res.json());
@@ -338,7 +362,7 @@ function llmToolChat(msgs, opts) {
   });
 }
 
-// opts: { cfg（不传 = 全局 API 设置）, stream, signal, onText(全文), temperature, keepMedia（测试用：不替换媒体）, maxTokens, tools, callTool, onStatus }
+// opts: { cfg（不传 = 全局 API 设置）, stream, signal, onText(全文), onRequestMedia, temperature, keepMedia（测试用：不替换媒体）, maxTokens, tools, callTool, onStatus }
 function llmRequest(msgs, opts) {
   opts = opts || {};
   var cfg = opts.cfg || getApiCfg();
@@ -373,6 +397,7 @@ function llmRequest(msgs, opts) {
     var once = function(off) {
       return resolveMediaParts(prepared.messages, opts.onVoiceNotes).then(function() {
         var req = llmBuild(prepared, cfg, Object.assign({}, opts, { thinkOff: off }));
+        if (!opts.signal || !opts.signal.aborted) llmReportRequestMedia(prepared.messages, opts.onRequestMedia);
         return fetch(req.url, req.init);
       }).then(function(res) {
         if (!res.ok) return apiError(res);

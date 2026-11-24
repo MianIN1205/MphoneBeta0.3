@@ -195,6 +195,12 @@ function sendPickedImage(files) {
       e.stopPropagation();
       renderPlusOrder();
       toggleCrDrawer(crPlusPanel, crPlusBtn);
+      // 等抽屉可见后再归位，之前的横向滚动才不会被浏览器恢复回来。
+      if (crPlusPageNeedsReset && crPlusPanel.classList.contains('open')) {
+        plusPages.scrollLeft = 0;
+        plusDots.forEach(function(dot, index) { dot.setAttribute('aria-current', String(index === 0)); });
+        crPlusPageNeedsReset = false;
+      }
     });
 
     // 表情键 → 升起表情包抽屉（内容暂时留空）
