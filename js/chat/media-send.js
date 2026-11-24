@@ -178,7 +178,7 @@ function resolveMediaParts(msgs, onVoiceNotes) {
 }
 
 // ---------- 测试：当前模型能不能真的看到图片、听到语音 ----------
-// 识图：画一张写着随机数字的图，问模型图里写了什么；语音：合成 3 声「嘟」，问模型听到几声
+// 识图和语音测试都用随机答案，确认模型实际识别出了附件内容。
 function mediaTestResult(text, ok) {
   var el = document.getElementById('mediaTestResult');
   el.textContent = text;
@@ -188,6 +188,11 @@ function mediaTestAsk(content, cfg) {
   // 测试时原样发送图片 / 音频，不自动换成文字
   return llmRequest([{ role: 'user', content: content }], { stream: false, cfg: cfg, keepMedia: true, temperature: 0 })
     .then(function(text) { return String(text || '').trim(); });
+}
+function mediaTestNumberMatches(reply, expected) {
+  // 引用标记可能由接口在模型答案末尾附加。去掉后仍要求只有一个数字答案。
+  var answer = reply.normalize('NFKC').replace(/(?:\s*\[cite:\s*\d+(?:\s*,\s*\d+)*\s*\])+\s*$/i, '').trim();
+  return answer === String(expected);
 }
 document.getElementById('mediaTestImgBtn').addEventListener('click', function() {
   var cfg = readDraftApiConfig();
@@ -203,10 +208,10 @@ document.getElementById('mediaTestImgBtn').addEventListener('click', function() 
     { type: 'text', text: '图片里写的是什么数字？只回答数字。' },
     { type: 'image_url', image_url: { url: c.toDataURL('image/png') } }
   ], cfg).then(function(reply) {
-    var ok = reply === code;
+    var ok = mediaTestNumberMatches(reply, code);
     if (ok) llmRememberMedia(cfg, { image: true });
     mediaTestResult(ok ? '✓ 识图正常：图里是 ' + code + '，模型回答「' + reply.slice(0, 30) + '」'
-                       : '✗ 模型没认出来：图里是 ' + code + '，模型回答「' + reply.slice(0, 40) + '」', ok);
+                       : '✗ 识图测试未通过：图里是 ' + code + '，模型回答「' + reply.slice(0, 40) + '」', ok);
   }, function(err) { mediaTestResult('✗ 识图请求失败：' + err.message, false); });
 });
 document.getElementById('mediaTestAudioBtn').addEventListener('click', function() {
@@ -232,11 +237,11 @@ document.getElementById('mediaTestAudioBtn').addEventListener('click', function(
     { type: 'text', text: '这段音频里一共有几声「嘟」的提示音？只回答一个阿拉伯数字。' },
     { type: 'input_audio', input_audio: { data: btoa(bin), format: 'wav' } }
   ], cfg).then(function(reply) {
-    var ok = reply === String(count);
+    var ok = mediaTestNumberMatches(reply, count);
     if (ok) llmRememberMedia(cfg, { audio: true });
     mediaTestResult(ok ? '✓ 语音正常：模型听到了 ' + count + ' 声'
-                       : '✗ 应为 ' + count + ' 声，模型回答「' + reply.slice(0, 40) + '」', ok);
-  }, function(err) { mediaTestResult('✗ 语音请求失败：' + err.message + '（这个模型或接口可能不支持音频输入）', false); });
+                       : '✗ 语音测试未通过：应为 ' + count + ' 声，模型回答「' + reply.slice(0, 40) + '」', ok);
+  }, function(err) { mediaTestResult('✗ 语音请求失败：' + err.message, false); });
 });
 
 fillMediaForm();
