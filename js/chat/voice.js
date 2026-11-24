@@ -104,7 +104,7 @@ function drawWaveform(canvas, audioBuffer) {
 }
 
 // 绘制随机占位竖线波形（解码失败时）
-function drawFlatWaveform(canvas) {
+function drawFlatWaveform(canvas, fixed) {
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -112,7 +112,7 @@ function drawFlatWaveform(canvas) {
   var barCount = Math.floor(W / (BAR_W + GAP));
   var amp = H / 2;
   for (var i = 0; i < barCount; i++) {
-    var barH = Math.random() * amp * 0.7 + 3;
+    var barH = (fixed ? (i * 7 % 13) / 13 : Math.random()) * amp * 0.7 + 3;
     var x = i * (BAR_W + GAP);
     var y = (H - barH) / 2;
     ctx.fillStyle = 'rgba(160,80,120,0.32)';
@@ -150,7 +150,8 @@ function createVoiceBubble(m, list, empty) {
   var mins   = Math.floor(durationSec / 60);
   var secs   = Math.round(durationSec % 60);
   var durStr = mins + ':' + String(secs).padStart(2, '0');
-  var audio  = new Audio(m.voice.src || '');
+  var preview = list._lookPreview;
+  var audio = preview ? null : new Audio(m.voice.src || '');
 
   // 气泡宽度按时长自适应（短语音 120px … ≥18s→220px）
   var bubbleW = Math.min(220, Math.max(120, 92 + durationSec * 7));
@@ -183,7 +184,7 @@ function createVoiceBubble(m, list, empty) {
   durEl.className = 'voice-duration';
   durEl.textContent = durStr;
 
-  if (m.voice.src) inner.appendChild(playBtn);   // 打字发的语音没有录音，不显示播放键
+  if (m.voice.src || preview) inner.appendChild(playBtn);   // 打字发的语音没有录音，不显示播放键
   inner.appendChild(cvs);
   inner.appendChild(durEl);
   bubble.appendChild(inner);
@@ -196,6 +197,16 @@ function createVoiceBubble(m, list, empty) {
   var transcriptStatus = document.createElement('div');
   transcriptStatus.className = 'voice-transcript-status';
   transcriptWrap.append(createVoiceTranscript(m, transcriptStatus), transcriptStatus);
+  list.appendChild(row);
+  list.appendChild(transcriptWrap);
+  row._msg = m;
+  row._extras = [transcriptWrap];
+  if (preview) {
+    // iframe 载入的是序列化后的 HTML，canvas 上的波形需要作为背景图一并带进去。
+    drawFlatWaveform(cvs, true);
+    cvs.style.backgroundImage = 'url(' + cvs.toDataURL() + ')';
+    return row;
+  }
 
   // 解码绘制静态波形（结果缓存供停止播放后重绘）
   var _decoded = null;
@@ -263,10 +274,6 @@ function createVoiceBubble(m, list, empty) {
     list.scrollTop = list.scrollHeight;
   });
 
-  list.appendChild(row);
-  list.appendChild(transcriptWrap);
-  row._msg = m;
-  row._extras = [transcriptWrap];
   list.scrollTop = list.scrollHeight;
   return row;
 }

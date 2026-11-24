@@ -207,20 +207,24 @@ function statusFontFollow(html) {
     return fonts.length && fonts.every(function(f) { return STATUS_GENERIC_FONTS.test(f); }) ? '' : all;
   });
 }
-// 小梦改状态栏的确认卡片上的效果图：拿这个角色最近一条状态栏，照改完的写法画一张
+// MianIN 的美化确认卡片用固定字段，和聊天室预览一样不读取对话。
 function statusPreviewEl(a) {
   var char = typeof findCharByName === 'function' ? findCharByName(a.target) : null;
   if (!char) return null;
   return statusCardEl(char, Object.assign({}, DEFAULT_LOOK, char.look || {}, typeof statusLookPatch === 'function' ? statusLookPatch(a) : {}), true);
 }
 // 照一套状态栏写法画一张卡片（和面板里一样放进 Shadow DOM）：有最近一条状态栏就用它；没有时（needLast = false）把模板里的 $1、$2 换成「…」画个样子
-function statusCardEl(char, look, needLast) {
-  var hist = (char && chatHistories[char.id]) || [], last = null;
+function statusCardEl(char, look, sample) {
+  var hist = sample ? [] : (char && chatHistories[char.id]) || [];
+  var last = sample ? { status: '时间：15:30|地点：窗边|心情：轻松' } : null;
   for (var i = hist.length - 1; i >= 0; i--) if (hist[i] && hist[i].status) { last = hist[i]; break; }
   var spec = statusSpec(look);
-  if (!last && (needLast || !spec || !spec.tpl)) return null;
+  if (!last && (!spec || !spec.tpl)) return null;
   if (!last) last = { status: '' };
-  var rx = !last.status ? String(spec.tpl).replace(/\$\d+|\{\{\s*match\s*\}\}/gi, '…') : spec ? statusRegexRender(spec, last.status) : null, body, lined = false;
+  var rx = last.status && spec ? statusRegexRender(spec, last.status) : null, body, lined = false;
+  if (!rx && spec && spec.tpl && (sample || !last.status)) {
+    rx = String(spec.tpl).replace(/\$\d+|\{\{\s*match\s*\}\}/gi, sample ? '示例' : '…');
+  }
   if (rx) body = statusSafeHtml(fillMacros(rx, char));
   else if (statusIsHtml(last.status)) body = statusSafeHtml(fillMacros(last.status, char));
   else { body = statusTextHtml(fillMacros(last.status, char).replace(/\n+/g, '|')); lined = true; }

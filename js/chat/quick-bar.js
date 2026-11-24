@@ -59,6 +59,8 @@ function renderQuickBar() {
   var char = crQuickChar();
   var on = !!(char && Object.assign({}, DEFAULT_CHAT_CFG, char.chatCfg || {}).quickBar);   // 默认开（用户要的：第一次用就看得到）
   appChatRoom.classList.toggle('cr-qb-on', on);
+  if (on) crQuickBar.style.removeProperty('display');
+  else crQuickBar.style.setProperty('display', 'none', 'important');
   if (!on) { closeQuickPop(); return; }
   var api = charApiPreset(char);
   var pre = charOwnPromptPreset(char);

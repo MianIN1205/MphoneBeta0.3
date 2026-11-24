@@ -26,8 +26,9 @@
 .album-pop-list { display: flex; flex-direction: column; }
 .album-pop-btn { padding: 10px 18px; border: none; border-radius: 11px; background: none; font-size: 14px; color: #444; font-family: inherit; cursor: pointer; text-align: center; -webkit-tap-highlight-color: transparent; }
 .album-pop-btn:active { background: rgba(255, 255, 255, 0.45); }
-.album-pick-limit { margin-left: 3px; color: #805c6c; font-size: 11px; }
-.album-pop-btn + .album-pop-btn { border-top: 1px solid rgba(255, 255, 255, 0.55); border-radius: 0; }
+#albumPickPhoto { padding-bottom: 5px; }
+.album-pick-limit { margin: 0 0 5px; color: #746971; font-size: 10px; line-height: 1.3; text-align: center; }
+.album-pick-limit + .album-pop-btn, .album-pop-btn + .album-pop-btn { border-top: 1px solid rgba(255, 255, 255, 0.55); border-radius: 0; }
 .album-pop .album-text-input { background: rgba(255, 255, 255, 0.6); }
 #albumPickText { width: 240px; padding: 4px; }
 .album-pop-acts { display: flex; gap: 8px; }
@@ -70,9 +71,26 @@
 
 
 /* MianIN 改样式的卡片里：缩小版效果图（js/char/css-preview.js）和「看代码」 */
-.cr-css-mini { position: relative; width: 230px; max-width: 100%; overflow: hidden; border-radius: 12px; margin: 4px 0 6px; background: rgba(0, 0, 0, 0.03); box-shadow: inset 0 0 0 1px rgba(210, 180, 190, 0.35); pointer-events: none; }
-.cr-css-mini iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+.cr-css-preview { position: relative; width: 230px; max-width: 100%; overflow: hidden; border-radius: 12px; margin: 4px 0 6px; }
+.cr-css-preview iframe { position: absolute; left: 0; top: 0; width: 390px; height: var(--look-preview-height); border: 0; transform-origin: 0 0; pointer-events: none; visibility: hidden; }
+.cr-css-preview.ready iframe { visibility: visible; }
+.cr-css-preview-open { position: absolute; inset: 0; padding: 7px; border: 0; border-radius: inherit; background: transparent; cursor: zoom-in; display: flex; align-items: flex-end; justify-content: flex-end; }
+.cr-css-preview-open span { padding: 4px 8px; border-radius: 10px; background: #fff8f2f5; color: #704d60; font: inherit; font-size: 11px; font-weight: 600; box-shadow: 0 1px 5px #38213029; }
+.cr-css-preview-open:focus-visible { outline: 2px solid #a45c7a; outline-offset: -2px; }
+.cr-look-preview-modal { width: min(420px, calc(100% - 20px)); max-height: 88%; padding: 8px 9px 10px; gap: 4px; }
+.cr-look-preview-head { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; min-height: 36px; }
+.cr-look-preview-head .mine-acc-title { grid-column: 2; }
+.cr-look-preview-head button { width: 36px; height: 36px; border: 0; border-radius: 12px; color: #745565; background: #f3e6ed; font: 400 21px/1 system-ui, sans-serif; cursor: pointer; }
+.cr-look-preview-head button:focus-visible { outline: 2px solid #a45c7a; outline-offset: -2px; }
+.cr-look-preview-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 3px; color: #796b74; font-size: 11px; }
+.cr-look-preview-tools[hidden] { display: none; }
+.cr-look-preview-tools button { border: 0; border-radius: 8px; padding: 5px 8px; background: #f3e6ed; color: #745565; font: inherit; cursor: pointer; }
+.cr-look-preview-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.cr-look-preview-body .cr-css-preview { width: 100%; margin: 0; }
+.cr-look-preview-body .cr-css-preview iframe { pointer-events: auto; }
+.cr-look-preview-body .cr-action-status-preview { max-height: none; overflow: visible; margin: 0; }
 .cr-action-code-btn { border: none; background: none; padding: 2px 0; font-size: 11.5px; color: #b08a9a; font-family: inherit; cursor: pointer; }
+.cr-action-code-btn + .cr-action-code-btn { margin-left: 10px; }
 
 /* 从设备相册选超上限时，确认本次要发送的图片。 */
 .pick-modal { width: 320px; padding: 14px; }

@@ -142,6 +142,7 @@ var ASSISTANT_ROOM_HINT =
   '写完要照顾到：角色和用户两种块、连着发合成一个框的后几条（.chat-msg-row.ai + .chat-msg-row.ai，信息区是藏着的）、旁白 .cr-narr、深色背景时字要看得清。' +
   '改头像：隐藏用 .chat-msg-avatar{display:none}；换大小改 width / height（同时改 min-width 防挤压）；想让头像在气泡上面，用 .chat-msg-row{flex-direction:column; align-items:flex-start} 和 .chat-msg-row.user{align-items:flex-end}。' +
   '改排版：气泡宽度改 .chat-msg-bubble 的 max-width；整条居中、左右留白改 .chat-msg-row 的 padding / margin。' +
+  '拓展栏用 #crQuickBar、.cr-qb-chip；加号抽屉用 #crPlusPanel、.cr-plus-box 和 .cr-plus-label。普通图片、表情包、语音、转账、礼物和居中提示分别用 .img-bubble、.sticker-bubble、.voice-bubble-inner、.private-card-transfer、.private-card-gift、.cr-recall-notice 和 .cr-mcp-notice。美化卡片用固定样例，放大后可展开加号菜单。' +
   '提交前在心里按上面的结构过一遍，确认每个选择器都选得到，写完整、不要只写半截。';
 
 function assistantPrompt(char) {
@@ -172,11 +173,11 @@ function assistantPrompt(char) {
     acts.push('<mphone-action>{"type":"del_worldbook","name":"要删的条目名"}</mphone-action>');
   }
   if (cfg.css) {
-    out.push('【权限 · 设计界面 CSS】用户想改界面样子时，你可以写 CSS 并提交。target 为 "global" 时作用于整个界面（替换全部全局样式，所以要在现有内容基础上改）；' +
-      'target 为角色名时写进该角色的聊天室专属样式（mode 可选 "append" 追加 或 "replace" 替换，默认追加）；再加 "view":"drama" 就是改这个角色的剧情窗口，可以同时用 "format" 把剧情窗口的显示格式换成 "bubble"（气泡）、"box"（文本框：像酒馆那样一整块带框的，CSS 用来调框的样子）或 "custom"（自定义：排版和文本框一样，但不带颜色和边框，样子全靠你写的 CSS，要把背景、顶栏、每一块的框、头像、名字时间、旁白 .cr-narr、输入栏都照顾到）；还可以同时带上 "boxLayout"（头像位置："center" 居中 / "side" 左右，用户在右、角色在左 / "left" 左对齐）、"boxStyle"（文本框模板，只在 box 里有："soft" 柔和，颜色跟主题 / "glass" 毛玻璃 / "paper" 书页 / "night" 夜色）、"boxMeta"（true/false，显示楼层和字数）、"boxActs"（true/false，显示编辑按钮）。用户说想要某种效果时：先想用哪个格式最省事——只想换颜色、换感觉，就选 box + 最接近的模板，再用 CSS 微调；想要模板做不到的整体样子（比如酒馆美化那种章节式、杂志式、复古信纸），就用 custom 从头写，排版先选好 boxLayout 再用 CSS 改细节。' + ASSISTANT_CSS_HINT +
+    out.push('【权限 · 设计界面 CSS】用户想改界面样子时，你可以写 CSS 并提交。只改用户点名的角色、窗口和部件。修改一处时写最小范围的选择器和属性，其他地方的颜色、布局、开关和模板照旧。用户明确要求改全局才用 target "global"，明确要求重做整套才用 mode "replace"。美化拓展栏只改样式，显示由角色设置开关控制。' +
+      'target 为角色名时写进该角色的聊天室专属样式（mode 可选 "append" 追加 或 "replace" 替换，默认追加）；再加 "view":"drama" 就是改这个角色的剧情窗口，可以同时用 "format" 把剧情窗口的显示格式换成 "bubble"（气泡）、"box"（文本框：像酒馆那样一整块带框的，CSS 用来调框的样子）或 "custom"（自定义：排版和文本框一样，但不带颜色和边框，样子全靠你写的 CSS，要把背景、顶栏、每一块的框、头像、名字时间、旁白 .cr-narr、输入栏都照顾到）；还可以同时带上 "boxLayout"（头像位置："center" 居中 / "side" 左右，用户在右、角色在左 / "left" 左对齐）、"boxStyle"（文本框模板，只在 box 里有："soft" 柔和，颜色跟主题 / "glass" 毛玻璃 / "paper" 书页 / "night" 夜色）、"boxMeta"（true/false，显示楼层和字数）、"boxActs"（true/false，显示编辑按钮）。局部换颜色或细节时，保留原有显示格式和模板。只有用户明确要改用文本框时才选 box 和对应模板；明确要重做整套布局时才考虑 custom。' + ASSISTANT_CSS_HINT +
       '\n' + ASSISTANT_ROOM_HINT +
-      '\n当前全局样式：\n' + (globalCss ? globalCss.slice(0, 3000) : '（空）') +
-      '\n各角色现在的聊天室样式（改之前先看，在这个基础上改；mode "replace" 会整段换掉）：\n' + charList.filter(function(c) { return c.customCss || c.dramaLook; }).slice(0, 6).map(function(c) {
+      '\n以下只提供 CSS 摘录。局部修改时，把新增 CSS 作为补丁追加，只提交用户要求修改的字段；不要根据摘录重写旧设计。已有窗口的显示格式和模板只有在用户明确要求更换时才传入。\n当前全局 CSS 摘录：\n' + (globalCss ? globalCss.slice(0, 3000) : '（空）') +
+      '\n各角色的现有样式摘录：\n' + charList.filter(function(c) { return c.customCss || c.dramaLook; }).slice(0, 6).map(function(c) {
         var dl = c.dramaLook || {}, fmt = { bubble: '气泡', box: '文本框', custom: '自定义', text: '文本框' }[(dl.look || {}).format] || '气泡';
         return '· ' + (c.charAlias || c.charName) + '：聊天窗口 CSS ' + (c.customCss ? '「' + c.customCss.slice(0, 600) + '」' : '（空）') +
           '；剧情窗口格式 ' + fmt + '，剧情窗口 CSS ' + (dl.customCss ? '「' + dl.customCss.slice(0, 600) + '」' : '（空）');
@@ -187,13 +188,13 @@ function assistantPrompt(char) {
       return '· ' + (c.charAlias || c.charName) + '：' + (l.statusOn ? '开着' : '关着') + '；匹配正则「' + String(l.statusFind || '').slice(0, 200) + '」；美化 HTML「' + String(l.statusTpl || '').slice(0, 800) + '」；卡片 CSS「' + String(l.statusCss || '').slice(0, 400) + '」；生成规则约 ' + String(l.statusRules || '').length + ' 字';
     });
     out.push('【权限 · 状态栏】你可以直接改某个角色的状态栏（set_status，只写要改的那几项）：on（开 / 关）、rules（生成规则：要角色每次写什么、按什么格式）、find（匹配正则，认出回复里那段状态栏，括号里的是 $1、$2）、tpl（美化 HTML，用 $1、$2 填内容，可以带 <style>）、css（卡片 CSS：卡片画在 Shadow DOM 里，这里的 CSS 只管卡片自己，可以用 :host 改卡片外框，也能直接写模板里的类名改里面的样子）。' +
-      '想要的只是换个样子，就只改 tpl 或 css；改了格式（字段、标签）要 rules、find、tpl 三样一起对上。字体默认跟着小手机，模板里写 Microsoft YaHei、Arial 这类通用字体会被忽略，要特别的字体就写它的名字（需要的话用 @import 引入）。卡片上会有效果图（拿这个角色最近一条状态栏画）。\n' +
+      '想要的只是换个样子，就只改 tpl 或 css；改了格式（字段、标签）要 rules、find、tpl 三样一起对上。字体默认跟着小手机，模板里写 Microsoft YaHei、Arial 这类通用字体会被忽略，要特别的字体就写它的名字（需要的话用 @import 引入）。卡片用固定样例画效果图。\n' +
       '现在的状态栏：\n' + (stLines.join('\n') || '（还没有角色开着状态栏）'));
-    out.push('【权限 · 气泡】set_css 里还可以顺便换气泡（不写 css 也行）："bubbleTpl"（气泡模板：聊天窗口 plain 默认 / tail 小尾巴 / jelly 果冻 / line 线框 / glass 毛玻璃 / sticker 贴纸 / night 夜色 / siya 仿siya；剧情窗口只有 plain 和 siyad 剧情版仿siya）、"bubblePreset"（颜色预设 0 蓝粉 / 1 紫灰 / 2 橙绿 / 3 白绿）、"bubbleOpacity"（0～100）、"bubbleEffect"（none / shadow-out 外阴影 / shadow-in 内阴影 / glow 发光）、"showAvatar"（true / false，消息旁边的头像）。');
-    acts.push('<mphone-action>{"type":"set_status","target":"角色名","css":"卡片 CSS（只改样子时写这个）","tpl":"美化 HTML（可选）","find":"匹配正则（可选）","rules":"生成规则（可选）","on":true}</mphone-action>（只写要改的那几项）');
-    acts.push('<mphone-action>{"type":"set_css","target":"角色名","bubbleTpl":"jelly","bubblePreset":1,"bubbleOpacity":80,"css":""}</mphone-action>（只换气泡时 css 留空字符串）');
-    acts.push('<mphone-action>{"type":"set_css","target":"global","css":"完整的 CSS"}</mphone-action>');
-    acts.push('<mphone-action>{"type":"set_css","target":"角色名","view":"drama","format":"box","boxLayout":"side","boxStyle":"glass","mode":"replace","css":"剧情窗口的 CSS（只换模板和头像位置时可以留空字符串）"}</mphone-action>');
+    out.push('【权限 · 气泡】用户要改气泡时，set_css 只填点名的选项："bubbleTpl"（聊天窗口 plain / tail / jelly / line / glass / sticker / night / siya；剧情窗口 plain / siyad）、"bubblePreset"（0 蓝粉 / 1 紫灰 / 2 橙绿 / 3 白绿）、"bubbleOpacity"（0～100）、"bubbleEffect"（none / shadow-out / shadow-in / glow）、"showAvatar"（消息头像，true / false）。');
+    acts.push('<mphone-action>{"type":"set_status","target":"角色名","css":"卡片 CSS"}</mphone-action>（示例：只改状态栏样式）');
+    acts.push('<mphone-action>{"type":"set_css","target":"角色名","bubbleOpacity":80}</mphone-action>（示例：只改气泡透明度）');
+    acts.push('<mphone-action>{"type":"set_css","target":"global","mode":"append","css":"仅限用户指定部件的规则"}</mphone-action>');
+    acts.push('<mphone-action>{"type":"set_css","target":"角色名","view":"drama","boxLayout":"side"}</mphone-action>（示例：只改剧情头像位置）');
   }
   if (cfg.err) {
     var api = getApiCfg();
@@ -289,6 +290,23 @@ function statusLookPatch(a) {
   return o;
 }
 
+function assistantCssPatch(previous, action) {
+  if (typeof action.css !== 'string') return previous;
+  if (action.mode === 'replace') return action.css;
+  if (!action.css.trim()) return previous;
+  return (previous ? previous + '\n' : '') + action.css;
+}
+
+function replacesAssistantCss(a) {
+  if (a.type !== 'set_css' || a.mode !== 'replace' || typeof a.css !== 'string') return false;
+  var previous = globalCss;
+  if (a.target && a.target !== 'global') {
+    var c = findCharByName(a.target);
+    previous = c && viewLookPart(c, a.view === 'drama').customCss;
+  }
+  return !!(previous && previous.trim() && previous !== a.css);
+}
+
 // ---------- 执行 / 撤销 ----------
 function runAction(a) {
   var helper = assistantChar();
@@ -348,7 +366,7 @@ function runAction(a) {
   } else if (a.type === 'set_css') {
     if (!a.target || a.target === 'global') {
       a.result = { prev: globalCss };
-      setGlobalCss(String(a.css || ''));
+      setGlobalCss(assistantCssPatch(globalCss, a));
     } else {
       var c = findCharByName(a.target);
       if (!c) throw new Error('找不到角色「' + a.target + '」');
@@ -357,15 +375,17 @@ function runAction(a) {
         if (!c.dramaLook) { c.dramaLook = JSON.parse(JSON.stringify(viewLookPart(c, true))); delete c.dramaLook._borrowed; }   // 不带聊天窗口的 CSS
         var dl = c.dramaLook;
         a.result = { charId: c.id, view: 'drama', prev: dl.customCss || '', prevFormat: (dl.look || {}).format };
-        dl.customCss = a.mode === 'replace' ? String(a.css || '') : ((dl.customCss ? dl.customCss + '\n' : '') + String(a.css || ''));
+        if (typeof a.css === 'string') dl.customCss = assistantCssPatch(dl.customCss, a);
         a.result.prevLook = JSON.parse(JSON.stringify(dl.look || {}));
         a.result.prevBubble = JSON.parse(JSON.stringify(dl.bubble || {}));
         dl.look = Object.assign({}, dl.look || {}, dramaLookPatch(a), typeof a.showAvatar === 'boolean' ? { showAvatar: a.showAvatar } : {});
-        dl.bubble = Object.assign({}, DEFAULT_BUBBLE, dl.bubble || {}, bubblePatch(a, true));
+        var dramaBubble = bubblePatch(a, true);
+        if (Object.keys(dramaBubble).length) dl.bubble = Object.assign({}, DEFAULT_BUBBLE, dl.bubble || {}, dramaBubble);
       } else {
         a.result = { charId: c.id, prev: c.customCss || '', prevBubble: JSON.parse(JSON.stringify(c.bubble || {})), prevChatLook: JSON.parse(JSON.stringify(c.look || {})) };
-        if (a.css || a.mode === 'replace') c.customCss = a.mode === 'replace' ? String(a.css || '') : ((c.customCss ? c.customCss + '\n' : '') + String(a.css || ''));
-        c.bubble = Object.assign({}, DEFAULT_BUBBLE, c.bubble || {}, bubblePatch(a, false));
+        if (typeof a.css === 'string') c.customCss = assistantCssPatch(c.customCss, a);
+        var chatBubble = bubblePatch(a, false);
+        if (Object.keys(chatBubble).length) c.bubble = Object.assign({}, DEFAULT_BUBBLE, c.bubble || {}, chatBubble);
         if (typeof a.showAvatar === 'boolean') c.look = Object.assign({}, c.look || {}, { showAvatar: a.showAvatar });
       }
       saveCharList();
@@ -490,14 +510,17 @@ function paintActionCard(card, m) {
     if (a.view === 'drama' && a.format) line('剧情窗口格式', { bubble: '气泡', box: '文本框', custom: '自定义' }[a.format] || a.format);
     if (a.view === 'drama' && a.boxLayout) line('头像位置', { center: '居中', side: '左右', left: '左对齐' }[a.boxLayout] || a.boxLayout);
     if (a.view === 'drama' && a.boxStyle) line('文本框模板', ((typeof DRAMA_BOX_STYLES !== 'undefined' ? DRAMA_BOX_STYLES : []).filter(function(s) { return s.id === a.boxStyle; })[0] || { name: a.boxStyle }).name);
+  } else if (a.type === 'set_css' && typeof a.css === 'string') {
+    line('方式', a.mode === 'replace' ? '替换原有全局样式' : '追加到原有全局样式');
   }
   var pre = document.createElement('pre');
   pre.className = 'cr-action-pre';
   pre.textContent = a.type === 'add_worldbook' || a.type === 'edit_worldbook' ? (a.content || '') : a.type === 'del_worldbook' ? '' : a.type === 'set_css' ? (a.css || '') :
     a.type === 'set_status' ? [['rules', '生成规则'], ['find', '匹配正则'], ['tpl', '美化 HTML'], ['css', '卡片 CSS']].filter(function(k) { return typeof a[k[0]] === 'string'; }).map(function(k) { return '【' + k[1] + '】\n' + a[k[0]]; }).join('\n\n') : (a.raw || '');
   if (!pre.textContent) pre.style.display = 'none';
-  // 改状态栏：用这个角色最近一条状态栏照新写法画一张（画不出来就只给代码）
+  // 用固定字段预览新状态栏，保留查看代码的入口。
   if (a.type === 'set_status' && typeof statusPreviewEl === 'function') { var sp = statusPreviewEl(a); if (sp) { body.appendChild(sp); pre.style.display = 'none';
+    body.appendChild(actionLookPreviewButton(function() { return statusPreviewEl(a); }));
     var sBtn = document.createElement('button'); sBtn.className = 'cr-action-code-btn'; sBtn.textContent = '看代码';
     sBtn.addEventListener('click', function(e) { e.stopPropagation(); var on = pre.style.display === 'none'; pre.style.display = on ? '' : 'none'; sBtn.textContent = on ? '收起代码' : '看代码'; });
     body.appendChild(sBtn); } }
@@ -549,7 +572,16 @@ function paintActionCard(card, m) {
       catch (err) { a.error = err.message; showToast('✗ ' + err.message, 'error'); paintActionCard(card, m); }
     };
     if (a.state === 'pending') btn('忽略', 'ghost', function() { done('ignored'); });
-    btn(a.type === 'set_css' || a.type === 'set_status' ? '应用' : a.type === 'del_worldbook' ? '删除' : '确认', 'primary', confirmNow);
+    btn(a.type === 'set_css' || a.type === 'set_status' ? '应用' : a.type === 'del_worldbook' ? '删除' : '确认', 'primary', function() {
+      if (replacesAssistantCss(a)) {
+        openConfirm('替换现有自定义样式？', confirmNow, {
+          desc: '这次会用新 CSS 覆盖原有 CSS。应用后可以在卡片上撤销。',
+          okText: '确认替换'
+        });
+      } else {
+        confirmNow();
+      }
+    });
   }
   card.appendChild(foot);
 }
