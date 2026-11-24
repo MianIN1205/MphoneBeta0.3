@@ -13,20 +13,24 @@ function llmProvider(cfg) {
 }
 function llmModelName(cfg) { return String(cfg.model || '').toLowerCase(); }
 
-// 旧记录只存了模型名，无法归到具体接口，所以能力重新按接口记录。
-var llmMediaSupport = mphoneStore.load('mphone_media_support', {}) || {};
+var LLM_MEDIA_SUPPORT_KEY = 'mphone_media_support_v2';
 var MEDIA_REJECT_EXPIRE = 24 * 60 * 60 * 1000;
-// 给没有独立时间戳的旧失败记录补上时间，避免永久使用文字回退。
-(function() {
-  var changed = false, now = Date.now();
-  Object.keys(llmMediaSupport).forEach(function(key) {
-    var entry = llmMediaSupport[key];
-    if (!entry) return;
-    if (entry.image === false && !entry._imageAt) { entry._imageAt = entry._at || now; changed = true; }
-    if (entry.audio === false && !entry._audioAt) { entry._audioAt = entry._at || now; changed = true; }
-    if (entry._at) { delete entry._at; changed = true; }
+// 升级时只继承通过的能力记录。新键写入后，重新打开不会再清理新的拒收记录。
+var llmMediaSupport = (function() {
+  var current = mphoneStore.load(LLM_MEDIA_SUPPORT_KEY, null);
+  if (current) return current;
+  var previousMediaSupport = mphoneStore.load('mphone_media_support', {}) || {};
+  var migrated = {};
+  Object.keys(previousMediaSupport).forEach(function(key) {
+    var entry = previousMediaSupport[key];
+    if (!entry || (entry.image !== true && entry.audio !== true)) return;
+    var supported = {};
+    if (entry.image === true) supported.image = true;
+    if (entry.audio === true) supported.audio = true;
+    migrated[key] = supported;
   });
-  if (changed) mphoneStore.save('mphone_media_support', llmMediaSupport);
+  mphoneStore.save(LLM_MEDIA_SUPPORT_KEY, migrated);
+  return migrated;
 })();
 function llmMediaKey(cfg) {
   return JSON.stringify([String(cfg.url || '').trim().replace(/\/+$/, ''), cfg.model]);
@@ -39,7 +43,7 @@ function llmRememberMedia(cfg, support) {
   if (support.audio === false) entry._audioAt = now;
   else if (support.audio === true) delete entry._audioAt;
   llmMediaSupport[key] = entry;
-  mphoneStore.save('mphone_media_support', llmMediaSupport);
+  mphoneStore.save(LLM_MEDIA_SUPPORT_KEY, llmMediaSupport);
 }
 function llmCaps(cfg) {
   var m = llmModelName(cfg), anthropic = llmProvider(cfg) === 'anthropic';
